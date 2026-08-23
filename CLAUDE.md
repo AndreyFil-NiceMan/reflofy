@@ -54,6 +54,29 @@ uv run python -m build
 
 `pytest` runs in `asyncio_mode = auto` — async test functions need no decorator.
 
+## Observability (check this for every feature)
+
+Whatever the feature, before calling it done ask where it becomes invisible in
+production, and wire the ones that apply. `reflowfy/observability/` already has all
+three; none of them need new infrastructure:
+
+- **Log it** — `get_logger(__name__)`, `logger.info` for a decision a user would ask
+  about ("why did nothing arrive?"), `debug` for volume. Inside the worker the job's
+  `log_context` already binds execution_id/job_id/pipeline_name, so don't re-pass
+  them. Never log record contents or credentials.
+- **Persist it on the job** — a new terminal outcome or a per-job number belongs in
+  `JobStats` (`worker/executor.py`); it lands in the job row's `stats` JSON and is
+  queryable after the fact. A log line alone is gone once it rotates.
+- **Count it** — a new outcome gets a label value on the existing
+  `reflowfy_jobs_processed_total` counter (as `skipped`/`deduplicated` do) rather than
+  a new metric. Labels are low-cardinality only: never a message, an ID, or a record
+  value.
+
+The bar: a new terminal state or silent short-circuit must not be indistinguishable
+from an ordinary success in logs, job stats *and* metrics. `### Dropping a job` below
+is the worked example. Skip all three only for pure refactors and internal helpers —
+and say so.
+
 ## Architecture
 
 Three deployable services, all sharing the same package and the same PostgreSQL database. Each service auto-discovers user code on startup; they coordinate only through Postgres and Kafka, never by direct calls.
