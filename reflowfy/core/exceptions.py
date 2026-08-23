@@ -50,3 +50,15 @@ def pipeline_step(step: str, pipeline_name: str) -> Generator[None, None, None]:
             f"{step} of pipeline '{pipeline_name}' raised {type(exc).__name__}: {exc}",
             original_error=exc,
         ) from exc
+
+
+class SkipJob(PipelineError):
+    """Raise from any hook (or a transformation) to drop the current job.
+
+    The job stops before its destination write and is recorded as completed
+    with zero records — nothing is sent, nothing fails::
+
+        def define_destination(self, records, runtime_params):
+            if not [r for r in records if r["status"] == "ready"]:
+                raise SkipJob("nothing ready yet")
+    """

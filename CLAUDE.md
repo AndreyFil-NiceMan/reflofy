@@ -125,6 +125,18 @@ Where a third-party library genuinely has no types, the suppression is **file-sc
 
 `EXECUTION_MODE` env var selects `local` (in-process via `LocalDispatcher`, used by the default docker-compose) or `distributed` (Kafka via `KafkaDispatcher`). Same pipeline code runs in both.
 
+### Dropping a job
+
+`raise SkipJob("why")` from `source.fetch`, a transformation, `define_transformations`
+or `define_destination` to drop the current job: `run_job_records` catches it and
+returns the same empty-slice tuple an empty fetch does, so every caller (worker,
+`LocalExecutor`, `reflowfy test`) treats it as a no-op — no destination write, no
+failure. It subclasses `PipelineError`, so `pipeline_step` passes it through
+untouched; `transformation_runner` re-raises it instead of wrapping it in a
+`TransformationError`. The job records as `completed` with 0 records — there is no
+separate `skipped` state. A job whose fetch simply returns nothing already behaved
+this way. `define_source`/`define_jobs` run manager-side and are NOT covered.
+
 ### Content deduplication & DLQ
 
 Job IDs are plain `uuid4`. Idempotency is enforced **worker-side, by content**: when `enable_duplicate_jobs=False` the manager sets `dedup_check` on the payload, and the worker hashes the job's content (`execution/content_dedup.py`: pipeline name + transformation names + fetched records + the job's own `job_params`) and claims that hash in the `processed_content` table. First claimant runs; a later job with the same hash is marked `deduplicated` and never written. Note the hash covers records, not the source descriptor, so it is computed after fetching.

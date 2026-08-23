@@ -9,6 +9,7 @@ docs/superpowers/specs/2026-06-09-dynamic-transformation-resolution-design.md.
 import time
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple, cast
 
+from reflowfy.core.exceptions import SkipJob
 from reflowfy.transformations.base import TransformationError
 
 DEFAULT_MAX_STEPS = 1000
@@ -122,7 +123,7 @@ def apply_transformations_iteratively(
             validate_output = getattr(transformation, "validate_output", None)
             if callable(validate_output):
                 validate_output(transformed)
-        except TransformationError:
+        except (TransformationError, SkipJob):
             raise
         except Exception as exc:
             culprit_index, culprit = find_culprit_record(exc, transformed)
