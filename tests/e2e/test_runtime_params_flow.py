@@ -217,7 +217,7 @@ class TestIdBasedCurrentIdsFlat:
     def test_current_ids_accessible_flat(self):
         result = trigger_pipeline(
             "e2e_id_based_pipeline_test",
-            {"ids": [1, 2, 3]},
+            {"input_ids": [1, 2, 3]},
         )
         execution_id = result["execution_id"]
         status = wait_for_execution(execution_id)
@@ -247,7 +247,7 @@ class TestIdBasedPerBatchEnrichment:
     def test_per_batch_enrichment_is_isolated(self):
         result = trigger_pipeline(
             "e2e_id_based_params_enrich",
-            {"ids": [10, 20]},
+            {"input_ids": [10, 20]},
         )
         execution_id = result["execution_id"]
         status = wait_for_execution(execution_id)

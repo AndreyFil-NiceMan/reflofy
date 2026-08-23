@@ -341,7 +341,7 @@ class CliTestIdBasedDefineJobsPipeline(IdBasedPipeline):
     # No define_source on purpose: define_jobs owns the splitting, so the base
     # class must not force a stub.
     def define_jobs(self, runtime_params):
-        for parent_id in runtime_params["ids"]:
+        for parent_id in runtime_params.get("input_ids", []):
             yield [{"parent_id": parent_id, "child_id": f"{parent_id}-a"}]
 
     def define_destination(self, records, runtime_params):
@@ -632,7 +632,7 @@ class TestCliTestIdBased:
         """Command output should mention 'IdBasedPipeline' when the type is detected."""
         path = _write_id_based_pipeline(temp_workspace, ids_batch_size=2)
 
-        # Prompt: first call for 'ids' param, mock returning 6 IDs
+        # Prompt: first call for 'input_ids' param, mock returning 6 IDs
         with patch("rich.prompt.Prompt.ask", return_value="[1, 2, 3, 4, 5, 6]"):
             result = runner.invoke(app, ["test", path, "--dry-run"])
 

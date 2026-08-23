@@ -186,7 +186,7 @@ class LocalExecutor(BaseExecutor):
 
         Args:
             pipeline: IdBasedPipeline instance
-            runtime_params: Runtime parameters (must include 'ids')
+            runtime_params: Runtime parameters (must include 'input_ids')
             execution_id: Execution ID
 
         Returns:
@@ -195,7 +195,7 @@ class LocalExecutor(BaseExecutor):
         # Resolve and validate
         pipeline.resolve(runtime_params)
         params = pipeline.apply_defaults(runtime_params)
-        ids = params.get("ids", [])
+        ids = params.get("input_ids", [])
 
         # Create execution context
         context = ExecutionContext(
@@ -292,9 +292,7 @@ class LocalExecutor(BaseExecutor):
             return status
 
         except Exception as e:
-            logger.error(
-                "IdBasedPipeline %s execution failed: %s", execution_id, e, exc_info=True
-            )
+            logger.error("IdBasedPipeline %s execution failed: %s", execution_id, e, exc_info=True)
             status.state = ExecutionState.FAILED
             status.failed_jobs = len(ids) - status.completed_jobs
             status.error_message = str(e)

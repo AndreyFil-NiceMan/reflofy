@@ -41,25 +41,25 @@ the splitting. Each yielded element is one job, so each child ID gets its own
 transformations, its own destination write, and its own retry. Wrap it in
 ``job(...)`` to tag the job with the params it should run with, the way the
 built-in plan passes ``current_id``/``current_ids``:
-    >>> from reflowfy import IdRuntimeParams, job
+    >>> from reflowfy import RuntimeParams, job
     >>>
-    >>> class ChildSyncPipeline(IdBasedPipeline[IdRuntimeParams]):
+    >>> class ChildSyncPipeline(IdBasedPipeline[RuntimeParams]):
     ...     name = "child_sync"
     ...
-    ...     def define_jobs(self, runtime_params: IdRuntimeParams):
-    ...         for parent_id in runtime_params["ids"]:
+    ...     def define_jobs(self, runtime_params: RuntimeParams):
+    ...         for parent_id in runtime_params.get("input_ids", []):
     ...             for child_id in fetch_child_ids(parent_id):
     ...                 yield job(
     ...                     [{"parent_id": parent_id, "child_id": child_id}],
     ...                     current_id=parent_id,
     ...                 )
 
-Declare the pipeline's params type as a subclass of
-:class:`~reflowfy.core.runtime_params.IdRuntimeParams` rather than
-``RuntimeParams``: it is the same TypedDict plus the ``ids`` list reflowfy
-injects here, so ``runtime_params["ids"]`` type-checks and completes. Add your
-own keys to it; do **not** re-declare ``ids`` — reflowfy already declares that
-parameter for every IdBasedPipeline.
+``input_ids`` is the caller's whole list, and ``define_jobs`` is the only hook
+that reads it: it runs once, before any job exists, so there is no "current"
+slice yet. Everywhere downstream — ``define_source``, transformations, the
+destination — read ``current_ids``/``current_id`` instead; the manager strips
+``input_ids`` out of each job before dispatch, so reading it there would mean
+every job processing every ID.
 
 Note that overriding ``define_jobs`` replaces the built-in plan entirely, so
 ``current_ids`` is no longer filled in for you — pass what each job needs via
@@ -80,9 +80,9 @@ from reflowfy.execution.job_runner import chunk
 logger = logging.getLogger(__name__)
 
 
-# Built-in 'ids' parameter — automatically injected
+# Built-in 'input_ids' parameter — automatically injected
 _IDS_PARAMETER = PipelineParameter(
-    name="ids",
+    name="input_ids",
     description="List of IDs to process. Each ID triggers a separate source resolution.",
     required=True,
     param_type=list,
@@ -105,11 +105,7 @@ class IdBasedPipeline(AbstractPipeline[P]):
     - Implement `define_transformations(records, runtime_params)`
 
     Subclasses MAY:
-    - Declare their parameters as a type: `IdBasedPipeline[MyParams]` where
-      `MyParams(IdRuntimeParams, total=False)`. `IdRuntimeParams` is
-      `RuntimeParams` plus the injected `ids` list, so `runtime_params["ids"]`
-      is typed and completes.
-    - Override `define_parameters()` to add extra parameters (beyond `ids`)
+    - Override `define_parameters()` to add extra parameters (beyond `input_ids`)
     - Override `define_rate_limit()` for dynamic rate limiting
     - Override `define_jobs()` to own the splitting entirely — e.g. to expand
       each input ID into several jobs (see the module docstring). Then
@@ -117,7 +113,7 @@ class IdBasedPipeline(AbstractPipeline[P]):
     - Call `load_query("name.sql")` to read a template from the project's
       `queries/` folder (see QueryLoaderMixin)
 
-    The 'ids' parameter is automatically injected — users do NOT need to
+    The 'input_ids' parameter is automatically injected — users do NOT need to
     define it in `define_parameters()`.
 
     Attributes:
@@ -185,56 +181,62 @@ class IdBasedPipeline(AbstractPipeline[P]):
         """
         Plan one job per ``ids_batch_size`` IDs.
 
-        Override this to own the splitting yourself — the ``ids`` parameter is
-        still validated and injected, so you keep passing IDs in the request
-        body while deciding what a job is (see the module docstring for the
-        one-ID-fans-out-to-many case).
+        Override this to own the splitting yourself — the ``input_ids``
+        parameter is still validated and injected, so you keep passing IDs in
+        the request body while deciding what a job is (see the module docstring
+        for the one-ID-fans-out-to-many case).
 
         Each planned source carries its own ``job_params``: the batch's params
-        without the full ``ids`` list, since a job that handles two IDs has no
-        use for the other 999,998. ``current_ids``, ``current_id`` and any keys
-        ``define_source`` added stay, so workers still see them.
+        without the full ``input_ids`` list, since a job that handles two IDs
+        has no use for the other 999,998. ``current_ids``, ``current_id`` and
+        any keys ``define_source`` added stay, so workers still see them.
         """
-        ids: List[Any] = cast(Dict[str, Any], runtime_params).get("ids", [])
+        # Cast the dict, not the result: pyright resolves `input_ids` off the
+        # TypedDict and calls a cast on the value redundant, while mypy can't
+        # see through the `P` TypeVar bound and needs one. Casting the mapping
+        # satisfies both.
+        ids: List[Any] = cast(Dict[str, Any], runtime_params).get("input_ids", [])
         for ids_batch in chunk(ids, self.ids_batch_size):
             resolved = self.resolve_for_ids(cast(Dict[str, Any], runtime_params), ids_batch)
             source = resolved["source"]
-            source.job_params = {k: v for k, v in resolved["batch_params"].items() if k != "ids"}
+            source.job_params = {
+                k: v for k, v in resolved["batch_params"].items() if k != "input_ids"
+            }
             yield source
 
     # =========================================================================
-    # Built-in Logic — Parameters with auto-injected 'ids'
+    # Built-in Logic — Parameters with auto-injected 'input_ids'
     # =========================================================================
 
     def get_all_parameters(self) -> List[PipelineParameter]:
         """
-        Get all parameters including the built-in 'ids' parameter.
+        Get all parameters including the built-in 'input_ids' parameter.
 
         Returns:
-            List of all PipelineParameter instances (ids + user-defined)
+            List of all PipelineParameter instances (input_ids + user-defined)
         """
         user_params = self.define_parameters()
 
-        # Ensure user didn't accidentally define 'ids'
+        # Ensure user didn't accidentally define 'input_ids'
         user_param_names = {p.name for p in user_params}
-        if "ids" in user_param_names:
+        if "input_ids" in user_param_names:
             raise ValueError(
-                f"Pipeline '{self.name}': Do not define 'ids' in define_parameters(). "
+                f"Pipeline '{self.name}': Do not define 'input_ids' in define_parameters(). "
                 "It is automatically injected by IdBasedPipeline."
             )
 
         return [_IDS_PARAMETER] + user_params
 
     def validate_parameters(self, runtime_params: P) -> List[str]:
-        """Validate the shared parameter rules, plus the ones specific to `ids`."""
+        """Validate the shared parameter rules, plus the ones specific to `input_ids`."""
         errors = super().validate_parameters(runtime_params)
 
-        ids: Any = runtime_params.get("ids")
+        ids: Any = runtime_params.get("input_ids")
         if ids is not None:
             if not isinstance(ids, list):
-                errors.append("Parameter 'ids' must be a list")
+                errors.append("Parameter 'input_ids' must be a list")
             elif len(cast(List[Any], ids)) == 0:
-                errors.append("Parameter 'ids' must not be empty")
+                errors.append("Parameter 'input_ids' must not be empty")
 
         return errors
 

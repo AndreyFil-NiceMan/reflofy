@@ -15,7 +15,7 @@ from reflowfy.core.id_based_pipeline import IdBasedPipeline
 from reflowfy.core.types import Record, Records, Transformations
 from reflowfy.core.query_loader import load_query, load_query_text
 from reflowfy.core.registry import pipeline_registry
-from reflowfy.core.runtime_params import IdRuntimeParams, Param, RuntimeParams
+from reflowfy.core.runtime_params import Param, RuntimeParams
 from reflowfy.execution.job_runner import chunk, job
 from reflowfy.observability.logging import get_logger
 from reflowfy.transformations.base import BaseTransformation, TransformationError
@@ -44,10 +44,7 @@ __all__ = [
     "PipelineParameter",
     # Typed runtime_params: subclass RuntimeParams, pass it as
     # AbstractPipeline[MyParams], annotate defaults with Param.
-    # IdBasedPipeline authors subclass IdRuntimeParams instead — same thing
-    # plus the `ids` list reflowfy injects for them.
     "RuntimeParams",
-    "IdRuntimeParams",
     # Annotating your hooks: `Records` == List[Dict[str, Any]], and the
     # base classes the hooks return.
     "Record",

@@ -62,44 +62,18 @@ class RuntimeParams(TypedDict, total=False):
     total_batches: int
     retry_count: int
     is_retry: bool
-    # IdBasedPipeline only: the IDs this job is about. (`ids` -- the caller's
-    # full list -- lives on IdRuntimeParams, since for a plain AbstractPipeline
-    # it is an ordinary user parameter.)
+    # IdBasedPipeline only. `input_ids` is the caller's whole list, and exists
+    # only while the execution is still being planned: `define_jobs` is called
+    # once, before any job exists, so it is the one hook with no "current"
+    # slice to read. The manager strips it from each job before dispatch (a job
+    # handling two IDs has no use for the other 999,998), so from
+    # `define_source` onward `current_ids`/`current_id` are the keys to read.
+    input_ids: List[Any]
     current_ids: List[Any]
     current_id: Any
     # Set by the DLQ scheduler on a replayed run.
     _dlq_source: bool
     _dlq_job_ids: List[Any]
-
-
-class IdRuntimeParams(RuntimeParams, total=False):
-    """``RuntimeParams`` plus the ``ids`` list that ``IdBasedPipeline`` injects.
-
-    ``IdBasedPipeline`` declares ``ids`` for you (users must *not* put it in
-    ``define_parameters()``), so it is a framework key there — but for a plain
-    ``AbstractPipeline`` an ``ids`` parameter is an ordinary user parameter.
-    Hence the separate TypedDict: extend this one from an ID-based pipeline and
-    ``runtime_params["ids"]`` types and completes like any other key::
-
-        class MyParams(IdRuntimeParams, total=False):
-            region: str
-
-        class MyPipeline(IdBasedPipeline[MyParams]):
-            name = "mine"
-
-            def define_jobs(self, runtime_params: MyParams):
-                for entity_id in runtime_params.get("ids", []):
-                    ...
-
-    Read it with ``.get("ids", [])``, not ``["ids"]``: the manager strips the
-    full ID list out of a job's params before dispatch (a job handling two IDs
-    has no use for the other 999,998), so ``ids`` is present in ``define_jobs``
-    and ``define_source`` but gone by the time a worker runs
-    ``define_transformations``/``define_destination`` — where ``current_ids``
-    is the key you want.
-    """
-
-    ids: List[Any]
 
 
 # Bound so a params type must extend RuntimeParams; defaulted to Any so that a

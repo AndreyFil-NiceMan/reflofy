@@ -60,7 +60,7 @@ class TestIdBasedPipelineE2E:
             json={
                 "pipeline_name": "e2e_id_based_pipeline_test",
                 "runtime_params": {
-                    "ids": ["alpha", "beta", "gamma"],
+                    "input_ids": ["alpha", "beta", "gamma"],
                 },
             },
         )
@@ -90,7 +90,7 @@ class TestIdBasedPipelineE2E:
             json={
                 "pipeline_name": "e2e_id_based_pipeline_test",
                 "runtime_params": {
-                    "ids": ["id_1", "id_2", "id_3"],
+                    "input_ids": ["id_1", "id_2", "id_3"],
                     "records_per_id": 10,  # 10 records per ID
                 },
             },
@@ -131,7 +131,7 @@ class TestIdBasedPipelineE2E:
             json={
                 "pipeline_name": "e2e_id_based_pipeline_test",
                 "runtime_params": {
-                    "ids": ["user_001", "user_002"],
+                    "input_ids": ["user_001", "user_002"],
                     "records_per_id": 5,
                 },
             },
@@ -165,7 +165,7 @@ class TestIdBasedPipelineE2E:
             json={
                 "pipeline_name": "e2e_id_based_pipeline_test",
                 "runtime_params": {
-                    "ids": ["single_entity"],
+                    "input_ids": ["single_entity"],
                     "records_per_id": 5,
                 },
             },
@@ -196,7 +196,7 @@ class TestIdBasedPipelineE2E:
             json={
                 "pipeline_name": "e2e_id_based_pipeline_test",
                 "runtime_params": {
-                    "ids": ids,
+                    "input_ids": ids,
                     "records_per_id": 5,  # 10 IDs × 5 records / 5 batch = 10 jobs
                 },
             },
@@ -266,7 +266,7 @@ class TestIdBasedBatchPipelineE2E:
             json={
                 "pipeline_name": "e2e_id_based_batch_pipeline_test",
                 "runtime_params": {
-                    "ids": ["a", "b", "c", "d", "e", "f"],
+                    "input_ids": ["a", "b", "c", "d", "e", "f"],
                     "records_per_id": 5,
                 },
             },
@@ -306,7 +306,7 @@ class TestIdBasedBatchPipelineE2E:
             json={
                 "pipeline_name": "e2e_id_based_batch_pipeline_test",
                 "runtime_params": {
-                    "ids": ["x1", "x2", "x3", "x4", "x5"],
+                    "input_ids": ["x1", "x2", "x3", "x4", "x5"],
                     "records_per_id": 5,
                 },
             },
@@ -350,7 +350,7 @@ class TestRawListSearchPipelineE2E:
             "/run",
             json={
                 "pipeline_name": self.PIPELINE,
-                "runtime_params": {"ids": list(range(1, 6))},
+                "runtime_params": {"input_ids": list(range(1, 6))},
             },
         )
         if response.status_code == 404:
@@ -366,7 +366,7 @@ class TestRawListSearchPipelineE2E:
             "/run",
             json={
                 "pipeline_name": self.PIPELINE,
-                "runtime_params": {"ids": list(range(1, 6)), "batch_size": 5},
+                "runtime_params": {"input_ids": list(range(1, 6)), "batch_size": 5},
             },
         )
         if response.status_code == 404:
@@ -385,7 +385,7 @@ class TestRawListSearchPipelineE2E:
             "/run",
             json={
                 "pipeline_name": self.PIPELINE,
-                "runtime_params": {"ids": list(range(1, 21)), "batch_size": 5},
+                "runtime_params": {"input_ids": list(range(1, 21)), "batch_size": 5},
             },
         )
         if response.status_code == 404:
@@ -404,7 +404,7 @@ class TestRawListSearchPipelineE2E:
             "/run",
             json={
                 "pipeline_name": self.PIPELINE,
-                "runtime_params": {"ids": list(range(1, 14)), "batch_size": 5},
+                "runtime_params": {"input_ids": list(range(1, 14)), "batch_size": 5},
             },
         )
         if response.status_code == 404:
@@ -430,7 +430,7 @@ class TestRawListSearchPipelineE2E:
             "/run",
             json={
                 "pipeline_name": self.PIPELINE,
-                "runtime_params": {"ids": list(range(1, 11)), "batch_size": 2},
+                "runtime_params": {"input_ids": list(range(1, 11)), "batch_size": 2},
             },
         )
         if response.status_code == 404:
@@ -450,7 +450,7 @@ class TestRawListSearchPipelineE2E:
             "/run",
             json={
                 "pipeline_name": self.PIPELINE,
-                "runtime_params": {"ids": list(range(101, 106))},
+                "runtime_params": {"input_ids": list(range(101, 106))},
             },
         )
         if response.status_code == 404:
@@ -486,7 +486,7 @@ class TestPatchBulkPipelineE2E:
             "/run",
             json={
                 "pipeline_name": self.PIPELINE,
-                "runtime_params": {"ids": list(range(1, 9))},
+                "runtime_params": {"input_ids": list(range(1, 9))},
             },
         )
         if response.status_code == 404:
@@ -505,7 +505,7 @@ class TestPatchBulkPipelineE2E:
             json={
                 "pipeline_name": self.PIPELINE,
                 "runtime_params": {
-                    "ids": list(range(1, 17)),
+                    "input_ids": list(range(1, 17)),
                     "active_only": False,
                     "batch_size": 4,
                 },
@@ -535,7 +535,7 @@ class TestPatchBulkPipelineE2E:
             json={
                 "pipeline_name": self.PIPELINE,
                 "runtime_params": {
-                    "ids": list(range(1, 9)),  # IDs 1-8
+                    "input_ids": list(range(1, 9)),  # IDs 1-8
                     "active_only": True,
                     "batch_size": 4,
                 },
@@ -561,7 +561,7 @@ class TestPatchBulkPipelineE2E:
             json={
                 "pipeline_name": self.PIPELINE,
                 "runtime_params": {
-                    "ids": list(range(1, 33)),
+                    "input_ids": list(range(1, 33)),
                     "active_only": False,
                     "batch_size": 4,
                 },
@@ -587,7 +587,7 @@ class TestPatchBulkPipelineE2E:
             json={
                 "pipeline_name": self.PIPELINE,
                 "runtime_params": {
-                    "ids": list(range(1, 21)),
+                    "input_ids": list(range(1, 21)),
                     "active_only": False,
                     "batch_size": 4,
                 },
@@ -625,7 +625,7 @@ class TestPerIdPostPipelineE2E:
             "/run",
             json={
                 "pipeline_name": self.PIPELINE,
-                "runtime_params": {"ids": list(range(1, 6))},
+                "runtime_params": {"input_ids": list(range(1, 6))},
             },
         )
         if response.status_code == 404:
@@ -639,7 +639,7 @@ class TestPerIdPostPipelineE2E:
             "/run",
             json={
                 "pipeline_name": self.PIPELINE,
-                "runtime_params": {"ids": list(range(1, 6)), "batch_size": 5},
+                "runtime_params": {"input_ids": list(range(1, 6)), "batch_size": 5},
             },
         )
         if response.status_code == 404:
@@ -658,7 +658,7 @@ class TestPerIdPostPipelineE2E:
             "/run",
             json={
                 "pipeline_name": self.PIPELINE,
-                "runtime_params": {"ids": list(range(1, 16)), "batch_size": 5},
+                "runtime_params": {"input_ids": list(range(1, 16)), "batch_size": 5},
             },
         )
         if response.status_code == 404:
@@ -677,7 +677,7 @@ class TestPerIdPostPipelineE2E:
             "/run",
             json={
                 "pipeline_name": self.PIPELINE,
-                "runtime_params": {"ids": list(range(1, 13)), "batch_size": 5},
+                "runtime_params": {"input_ids": list(range(1, 13)), "batch_size": 5},
             },
         )
         if response.status_code == 404:
@@ -700,7 +700,7 @@ class TestPerIdPostPipelineE2E:
             "/run",
             json={
                 "pipeline_name": self.PIPELINE,
-                "runtime_params": {"ids": list(range(101, 106))},
+                "runtime_params": {"input_ids": list(range(101, 106))},
             },
         )
         if response.status_code == 404:
@@ -724,7 +724,7 @@ class TestPerIdPostPipelineE2E:
             json={
                 "pipeline_name": self.PIPELINE,
                 "runtime_params": {
-                    "ids": [1, 2, 3, 101, 102],
+                    "input_ids": [1, 2, 3, 101, 102],
                     "batch_size": 5,
                 },
             },
@@ -761,7 +761,7 @@ class TestProductsBatchPipelineE2E:
             "/run",
             json={
                 "pipeline_name": self.PIPELINE,
-                "runtime_params": {"ids": [f"prod_{i}" for i in range(1, 6)]},
+                "runtime_params": {"input_ids": [f"prod_{i}" for i in range(1, 6)]},
             },
         )
         if response.status_code == 404:
@@ -776,7 +776,7 @@ class TestProductsBatchPipelineE2E:
             json={
                 "pipeline_name": self.PIPELINE,
                 "runtime_params": {
-                    "ids": [f"prod_{i}" for i in range(1, 11)],
+                    "input_ids": [f"prod_{i}" for i in range(1, 11)],
                     "batch_size": 5,
                 },
             },
@@ -798,7 +798,7 @@ class TestProductsBatchPipelineE2E:
             json={
                 "pipeline_name": self.PIPELINE,
                 "runtime_params": {
-                    "ids": [f"prod_{i}" for i in range(1, 21)],
+                    "input_ids": [f"prod_{i}" for i in range(1, 21)],
                     "batch_size": 5,
                 },
             },
@@ -824,7 +824,7 @@ class TestProductsBatchPipelineE2E:
             json={
                 "pipeline_name": self.PIPELINE,
                 "runtime_params": {
-                    "ids": [f"prod_{i}" for i in range(1, 26)],
+                    "input_ids": [f"prod_{i}" for i in range(1, 26)],
                     "batch_size": 5,
                 },
             },
@@ -849,7 +849,7 @@ class TestProductsBatchPipelineE2E:
             json={
                 "pipeline_name": self.PIPELINE,
                 "runtime_params": {
-                    "ids": ["prod_99", "prod_100", "prod_999"],
+                    "input_ids": ["prod_99", "prod_100", "prod_999"],
                 },
             },
         )
@@ -879,7 +879,7 @@ class TestProductsBatchPipelineE2E:
             "/run",
             json={
                 "pipeline_name": self.PIPELINE,
-                "runtime_params": {"ids": ids, "batch_size": 5},
+                "runtime_params": {"input_ids": ids, "batch_size": 5},
             },
         )
         if response.status_code == 404:
@@ -904,7 +904,7 @@ class TestProductsBatchPipelineE2E:
             json={
                 "pipeline_name": self.PIPELINE,
                 "runtime_params": {
-                    "ids": [f"prod_{i}" for i in range(1, 51)],
+                    "input_ids": [f"prod_{i}" for i in range(1, 51)],
                     "batch_size": 5,
                 },
             },
@@ -930,7 +930,7 @@ class TestIdBasedAPIBatchPipelineE2E:
             json={
                 "pipeline_name": "e2e_id_based_api_batch_pipeline_test",
                 "runtime_params": {
-                    "ids": list(range(1, 11)),  # 10 user IDs
+                    "input_ids": list(range(1, 11)),  # 10 user IDs
                 },
             },
         )
@@ -961,7 +961,7 @@ class TestIdBasedAPIBatchPipelineE2E:
             json={
                 "pipeline_name": "e2e_id_based_api_batch_pipeline_test",
                 "runtime_params": {
-                    "ids": list(range(1, 21)),  # 20 user IDs (all active + inactive mix)
+                    "input_ids": list(range(1, 21)),  # 20 user IDs (all active + inactive mix)
                     "batch_size": 5,
                 },
             },
@@ -996,7 +996,7 @@ class TestIdBasedAPIBatchPipelineE2E:
             json={
                 "pipeline_name": "e2e_id_based_api_batch_pipeline_test",
                 "runtime_params": {
-                    "ids": list(range(1, 11)),  # exactly 10 IDs
+                    "input_ids": list(range(1, 11)),  # exactly 10 IDs
                     "batch_size": 5,
                 },
             },
@@ -1030,7 +1030,7 @@ class TestIdBasedAPIBatchPipelineE2E:
             json={
                 "pipeline_name": "e2e_id_based_api_batch_pipeline_test",
                 "runtime_params": {
-                    "ids": list(range(1, 26)),  # 25 IDs
+                    "input_ids": list(range(1, 26)),  # 25 IDs
                     "batch_size": 5,
                 },
             },

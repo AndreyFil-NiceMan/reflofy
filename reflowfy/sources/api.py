@@ -55,7 +55,8 @@ class IDBasedAPISource(BaseSource):
             base_url: Base API URL (e.g. ``"https://api.example.com"``).
             endpoint_template: Endpoint path. Include ``{id}`` for per-ID mode
                 (e.g. ``"/users/{id}"``); omit it for batch mode.
-            ids: Static list of IDs. May also arrive via ``runtime_params["ids"]``.
+            ids: Static list of IDs. May also arrive via runtime params
+                (``input_ids`` on an IdBasedPipeline, else ``ids``).
             method: HTTP method.
             headers: Custom request headers.
             auth_type: ``"bearer"``, ``"apikey"``, or ``"basic"``.
@@ -116,10 +117,14 @@ class IDBasedAPISource(BaseSource):
         return self._client
 
     def _get_all_ids(self, runtime_params: Dict[str, Any]) -> List[Union[str, int]]:
-        """Get all IDs from config or runtime params."""
+        """Get all IDs from config or runtime params.
+
+        ``input_ids`` is IdBasedPipeline's injected parameter; ``ids`` is what a
+        plain AbstractPipeline names its own list (see api_example_pipeline).
+        """
         if self.config["ids"]:
             return self.config["ids"]
-        return runtime_params.get("ids", [])
+        return runtime_params.get("input_ids") or runtime_params.get("ids", [])
 
     def _extract_records(self, data: Any) -> List[Any]:
         """Extract records list from a response using ``response_key``."""

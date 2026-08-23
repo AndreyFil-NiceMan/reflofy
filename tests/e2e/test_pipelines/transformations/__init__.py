@@ -413,11 +413,11 @@ def id_fanout_stamp(records: Records, runtime_params: Dict[str, Any]) -> Records
     """Stamps what the worker's runtime_params actually carried.
 
     Lets the E2E assert the job payload was narrowed: an IdBasedPipeline that
-    overrides define_jobs must not ship the whole `ids` list to every job.
+    overrides define_jobs must not ship the whole `input_ids` list to every job.
     """
     # No leading underscore: this environment sanitizes `_saw*` keys before they
     # reach the mock server (same reason params_step2_verify mirrors its fields).
-    saw_ids = "ids" in runtime_params
+    saw_ids = "input_ids" in runtime_params
     for record in records:
         record["saw_ids_param"] = saw_ids
         record["job_current_id"] = runtime_params.get("current_id")
