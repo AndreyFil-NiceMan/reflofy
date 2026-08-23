@@ -182,7 +182,7 @@ def _id_based_payloads_over_the_wire(ids):
         runner.run_pipeline_jobs(
             execution_id="e",
             pipeline_name=_IdSyncPipeline.name,
-            runtime_params={"ids": list(ids), "env": "prod"},
+            runtime_params={"input_ids": list(ids), "env": "prod"},
         )
 
     rows = [r for call in runner.job_manager.create_jobs.call_args_list for r in call.args[0]]
@@ -205,7 +205,7 @@ def test_id_based_plan_survives_the_wire_with_only_its_own_ids():
         assert params["current_ids"] == expected_ids
         assert params["batch_tag"] == f"tag-{expected_ids[0]}"   # this batch's enrichment
         assert params["env"] == "prod"                           # other params still travel
-        assert "ids" not in params                               # not all 6
+        assert "input_ids" not in params                               # not all 6
 
     # job_params is a planning-time attribute; it must not ride on the wire.
     assert all("job_params" not in p["source"]["config"] for p in payloads)
@@ -239,4 +239,4 @@ async def test_worker_processes_an_id_based_job_end_to_end(monkeypatch):
     # The worker resolved the destination with this job's IDs, not the whole run.
     assert [p["current_ids"] for p in _SEEN_PARAMS] == [[0, 1], [2, 3], [4, 5]]
     assert [p["batch_tag"] for p in _SEEN_PARAMS] == ["tag-0", "tag-2", "tag-4"]
-    assert all("ids" not in p for p in _SEEN_PARAMS)
+    assert all("input_ids" not in p for p in _SEEN_PARAMS)

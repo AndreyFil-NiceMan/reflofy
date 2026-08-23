@@ -83,7 +83,7 @@ def _plan(ids, pipeline_name=_TinyIdPipeline.name, **params):
         runner.run_pipeline_jobs(
             execution_id="e1",
             pipeline_name=pipeline_name,
-            runtime_params={"ids": list(ids), "env": "prod", **params},
+            runtime_params={"input_ids": list(ids), "env": "prod", **params},
         )
 
     calls = runner.job_manager.create_jobs.call_args_list
@@ -103,8 +103,8 @@ def test_planned_jobs_do_not_carry_the_full_ids_list():
     assert len(rows) == 60
     for row in rows:
         params = row["job_payload"]["metadata"]["runtime_params"]
-        assert "ids" not in params
-        assert params["env"] == "prod"          # other params still travel
+        assert "input_ids" not in params
+        assert params["env"] == "prod"  # other params still travel
         assert len(row["job_payload"]["metadata"]["current_ids"]) == 1
 
 
@@ -138,7 +138,7 @@ class _ExpandingIdPipeline(IdBasedPipeline):
     name = "expanding_id_sync_for_planning_test"
 
     def define_jobs(self, runtime_params):
-        for parent_id in runtime_params["ids"]:
+        for parent_id in runtime_params["input_ids"]:
             for child in range(3):
                 yield [{"parent_id": parent_id, "child_id": f"{parent_id}-{child}"}]
 
@@ -166,7 +166,9 @@ class TestIdBasedOnUnifiedPlanner:
         rows, _ = _plan([7, 8], pipeline_name=_ExpandingIdPipeline.name)
 
         assert len(rows) == 6
-        children = [row["job_payload"]["source"]["config"]["records"][0]["child_id"] for row in rows]
+        children = [
+            row["job_payload"]["source"]["config"]["records"][0]["child_id"] for row in rows
+        ]
         assert children == ["7-0", "7-1", "7-2", "8-0", "8-1", "8-2"]
 
     def test_define_source_is_optional_when_define_jobs_is_overridden(self):
@@ -184,15 +186,19 @@ class TestIdBasedOnUnifiedPlanner:
         rows, _ = _plan([7, 8], pipeline_name=_ExpandingIdPipeline.name)
 
         for row in rows:
-            assert "ids" not in row["job_payload"]["metadata"]["runtime_params"]
+            assert "input_ids" not in row["job_payload"]["metadata"]["runtime_params"]
 
     def test_ids_parameter_is_still_injected_and_validated(self):
         pipeline = pipeline_registry.get(_BatchedIdPipeline.name)
 
-        assert "ids" in {p.name for p in pipeline.get_all_parameters()}
-        assert pipeline.validate_parameters({"ids": []}) == ["Parameter 'ids' must not be empty"]
-        assert "Parameter 'ids' must be a list" in pipeline.validate_parameters({"ids": "1,2"})
-        assert pipeline.validate_parameters({}) == ["Missing required parameter: ids"]
+        assert "input_ids" in {p.name for p in pipeline.get_all_parameters()}
+        assert pipeline.validate_parameters({"input_ids": []}) == [
+            "Parameter 'input_ids' must not be empty"
+        ]
+        assert "Parameter 'input_ids' must be a list" in pipeline.validate_parameters(
+            {"input_ids": "1,2"}
+        )
+        assert pipeline.validate_parameters({}) == ["Missing required parameter: input_ids"]
 
 
 class _JobParamsIdPipeline(IdBasedPipeline):
@@ -203,7 +209,7 @@ class _JobParamsIdPipeline(IdBasedPipeline):
     def define_jobs(self, runtime_params):
         from reflowfy import job
 
-        for parent_id in runtime_params["ids"]:
+        for parent_id in runtime_params["input_ids"]:
             for child in range(2):
                 yield job(
                     [{"child_id": f"{parent_id}-{child}"}],
@@ -255,8 +261,8 @@ class TestPerJobParamsFromCustomPlan:
 
         for row in rows:
             params = row["job_payload"]["metadata"]["runtime_params"]
-            assert params["env"] == "prod"   # execution param survives
-            assert "ids" not in params       # full ID list still stripped
+            assert params["env"] == "prod"  # execution param survives
+            assert "input_ids" not in params  # full ID list still stripped
 
 
 class _PlainPipeline(AbstractPipeline):
@@ -280,7 +286,7 @@ def test_abstract_path_still_carries_all_params():
     assert len(rows) == 2
     for row in rows:
         params = row["job_payload"]["metadata"]["runtime_params"]
-        assert params["ids"] == [1, 2, 3]        # untouched: no job_params set
+        assert params["input_ids"] == [1, 2, 3]  # untouched: no job_params set
         assert params["env"] == "prod"
         assert "current_ids" not in row["job_payload"]["metadata"]
 

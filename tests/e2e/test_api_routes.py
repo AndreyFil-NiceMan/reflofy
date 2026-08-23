@@ -315,7 +315,7 @@ class TestIdBasedRouteBody:
         r = client.post(
             "/pipelines/_test_id_based/run",
             params={"mode": "local"},
-            json={"ids": [1, 2, 3]},
+            json={"input_ids": [1, 2, 3]},
         )
         assert r.status_code == 200
 
@@ -325,10 +325,10 @@ class TestIdBasedRouteBody:
         client.post(
             "/pipelines/_test_id_based/run",
             params={"mode": "local"},
-            json={"ids": [10, 20, 30]},
+            json={"input_ids": [10, 20, 30]},
         )
         _, kwargs = local.execute.call_args
-        assert kwargs["runtime_params"]["ids"] == [10, 20, 30]
+        assert kwargs["runtime_params"]["input_ids"] == [10, 20, 30]
 
     def test_extra_scalar_param_passed_as_query(self, id_based_client):
         """Scalar params (e.g. `env`) are query params; only `ids` is in the body."""
@@ -337,7 +337,7 @@ class TestIdBasedRouteBody:
         client.post(
             "/pipelines/_test_id_based/run",
             params={"mode": "local", "env": "staging"},
-            json={"ids": [1]},
+            json={"input_ids": [1]},
         )
         _, kwargs = local.execute.call_args
         assert kwargs["runtime_params"]["env"] == "staging"
@@ -356,7 +356,7 @@ class TestIdBasedRouteBody:
         client, _, _ = id_based_client
         r = client.post(
             "/pipelines/_test_id_based/run",
-            params={"mode": "local", "ids": "1,2,3"},
+            params={"mode": "local", "input_ids": "1,2,3"},
         )
         # Without a body providing ids, the request must fail (422)
         assert r.status_code == 422
@@ -367,11 +367,11 @@ class TestIdBasedRouteBody:
         r = client.post(
             "/pipelines/_test_id_based_no_extra/run",
             params={"mode": "local"},
-            json={"ids": ["a", "b"]},
+            json={"input_ids": ["a", "b"]},
         )
         assert r.status_code == 200
         _, kwargs = local.execute.call_args
-        assert kwargs["runtime_params"]["ids"] == ["a", "b"]
+        assert kwargs["runtime_params"]["input_ids"] == ["a", "b"]
 
     def test_ids_can_be_strings(self, id_based_client):
         client, local, _ = id_based_client
@@ -379,7 +379,7 @@ class TestIdBasedRouteBody:
         r = client.post(
             "/pipelines/_test_id_based/run",
             params={"mode": "local"},
-            json={"ids": ["user-1", "user-2"]},
+            json={"input_ids": ["user-1", "user-2"]},
         )
         assert r.status_code == 200
 
@@ -389,7 +389,7 @@ class TestIdBasedRouteBody:
         r = client.post(
             "/pipelines/_test_id_based/run",
             params={"mode": "local"},
-            json={"ids": []},
+            json={"input_ids": []},
         )
         assert r.status_code == 200
 
@@ -437,7 +437,7 @@ class TestFailureResponse:
         r = client.post(
             "/pipelines/_test_id_based/run",
             params={"mode": "local"},
-            json={"ids": [1, 2, 3]},
+            json={"input_ids": [1, 2, 3]},
         )
         assert r.status_code == 422
 

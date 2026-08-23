@@ -741,9 +741,9 @@ def run_id_batches(
     pipeline: "IdBasedPipeline[Any]", params: Dict[str, Any], opts: TestOptions
 ) -> List[BatchReport]:
     """The ID-based path: one report per batch of IDs."""
-    ids: List[Any] = list(params.get("ids") or [])
+    ids: List[Any] = list(params.get("input_ids") or [])
     if not ids:
-        console.print("[red]❌ No IDs provided. The 'ids' parameter is required.[/red]")
+        console.print("[red]❌ No IDs provided. The 'input_ids' parameter is required.[/red]")
         raise typer.Exit(1)
 
     batch_size: int = pipeline.ids_batch_size

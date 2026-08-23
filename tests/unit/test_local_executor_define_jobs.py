@@ -27,7 +27,7 @@ class _FanOutIdPipeline(IdBasedPipeline):
     name = "local_exec_fanout_pipeline"
 
     def define_jobs(self, runtime_params):
-        for parent_id in runtime_params["ids"]:
+        for parent_id in runtime_params["input_ids"]:
             for child in range(2):
                 yield job([{"child_id": f"{parent_id}-{child}"}], current_id=parent_id)
 
@@ -56,7 +56,7 @@ class _BuiltinIdPipeline(IdBasedPipeline):
 def test_define_jobs_plan_is_used_instead_of_per_id_define_source():
     seen.clear()
 
-    status = LocalExecutor().execute(_FanOutIdPipeline(), {"ids": [101, 102]})
+    status = LocalExecutor().execute(_FanOutIdPipeline(), {"input_ids": [101, 102]})
 
     assert status.state is ExecutionState.COMPLETED
     # 2 IDs x 2 children = 4 jobs. The per-ID branch would have produced 2.
@@ -71,7 +71,7 @@ def test_define_jobs_plan_is_used_instead_of_per_id_define_source():
 def test_each_job_sees_its_own_params():
     seen.clear()
 
-    LocalExecutor().execute(_FanOutIdPipeline(), {"ids": [101, 102]})
+    LocalExecutor().execute(_FanOutIdPipeline(), {"input_ids": [101, 102]})
 
     assert [current_id for _, current_id in seen] == [101, 101, 102, 102]
 
@@ -79,7 +79,7 @@ def test_each_job_sees_its_own_params():
 def test_pipelines_without_an_override_still_take_the_per_id_path():
     seen.clear()
 
-    status = LocalExecutor().execute(_BuiltinIdPipeline(), {"ids": [7, 8]})
+    status = LocalExecutor().execute(_BuiltinIdPipeline(), {"input_ids": [7, 8]})
 
     assert status.state is ExecutionState.COMPLETED
     assert status.metadata["ids_processed"] == 2

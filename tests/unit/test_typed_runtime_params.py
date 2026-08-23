@@ -180,8 +180,8 @@ class TestDerivedDefineParameters:
         assert pipeline.define_parameters() == []
         assert pipeline.apply_defaults({"anything": 1}) == {"anything": 1}
 
-    def test_id_based_pipeline_derives_and_keeps_ids(self):
-        """IdBasedPipeline prepends its own `ids` parameter to the derived ones."""
+    def test_id_based_pipeline_derives_and_keeps_input_ids(self):
+        """IdBasedPipeline prepends its own `input_ids` parameter to the derived ones."""
 
         class IdParams(RuntimeParams, total=False):
             region: Annotated[NotRequired[str], Param("Region", default="eu")]
@@ -199,7 +199,7 @@ class TestDerivedDefineParameters:
                 return []
 
         params = _by_name(IdPipeline().get_all_parameters())
-        assert params["ids"].required is True
+        assert params["input_ids"].required is True
         assert params["region"].default == "eu"
 
     def test_subclass_inherits_declared_params(self):
@@ -216,3 +216,48 @@ class TestDerivedDefineParameters:
             name = "unit_typed_params_child"
 
         assert Child()._params_type is SampleParams
+
+
+class TestInputIdsIsAFrameworkKey:
+    """`input_ids` is reflowfy's key, injected by IdBasedPipeline.
+
+    It lives on RuntimeParams so a `define_jobs` override reads it typed, and
+    it must never be derived as a user parameter — `get_all_parameters` adds
+    the real one itself and rejects a duplicate.
+    """
+
+    def test_input_ids_is_not_derived_as_a_user_param(self):
+        class IdParams(RuntimeParams, total=False):
+            region: Annotated[NotRequired[str], Param("Region", default="eu")]
+
+        assert [p.name for p in params_from_typeddict(IdParams)] == ["region"]
+
+    def test_id_based_pipeline_injects_exactly_one_input_ids(self):
+        class IdParams(RuntimeParams, total=False):
+            region: Annotated[NotRequired[str], Param("Region", default="eu")]
+
+        class IdPipeline(IdBasedPipeline[IdParams]):
+            name = "unit_typed_params_input_ids"
+
+            def define_jobs(self, runtime_params: IdParams):
+                for entity_id in runtime_params.get("input_ids", []):
+                    yield entity_id
+
+            def define_destination(self, records, runtime_params):  # type: ignore[no-untyped-def]
+                return None
+
+            def define_transformations(self, records, runtime_params):  # type: ignore[no-untyped-def]
+                return []
+
+        names = [p.name for p in IdPipeline().get_all_parameters()]
+        assert names == ["input_ids", "region"]
+
+    def test_a_plain_pipeline_may_still_own_a_param_called_ids(self):
+        """The rename is what makes this safe: `ids` is no longer reserved."""
+
+        class ApiParams(RuntimeParams, total=False):
+            ids: Annotated[NotRequired[List[Any]], Param("IDs to fetch", default=[1, 2])]
+
+        ids = _by_name(params_from_typeddict(ApiParams))["ids"]
+        assert ids.default == [1, 2]
+        assert ids.param_type is list

@@ -724,7 +724,7 @@ class AbstractPipeline(QueryLoaderMixin, Generic[P], metaclass=PipelineMeta):
         Defaults to :meth:`define_parameters`. Subclasses override this to add
         parameters the framework injects rather than the user declaring them —
         see :class:`~reflowfy.core.id_based_pipeline.IdBasedPipeline`, which
-        prepends the built-in ``ids``. Validation, defaults and API metadata all
+        prepends the built-in ``input_ids``. Validation, defaults and API metadata all
         read this, so an injected parameter behaves like a declared one.
         """
         return self.define_parameters()

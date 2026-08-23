@@ -74,6 +74,7 @@ def _batch_timeout(job_count: int, rate_limit: Optional[float]) -> float:
     dispatch_seconds = job_count / (rate_limit / 60.0)
     return max(float(CHECKPOINT_BATCH_TIMEOUT), dispatch_seconds * 3)
 
+
 # Worker job message schema version
 JOB_SCHEMA_VERSION = 2
 
@@ -481,10 +482,10 @@ class PipelineRunner:
         # Params for jobs the plan didn't narrow itself. IdBasedPipeline.define_jobs
         # sets job_params per job, but a pipeline that *overrides* define_jobs plans
         # its own sources and sets nothing — and then every job would carry the whole
-        # `ids` list. Drop `ids` for the ID-based path the same way define_jobs does.
+        # `input_ids` list. Drop it for the ID-based path as define_jobs does.
         default_job_params = enriched_params
         if isinstance(pipeline, IdBasedPipeline):
-            default_job_params = {k: v for k, v in enriched_params.items() if k != "ids"}
+            default_job_params = {k: v for k, v in enriched_params.items() if k != "input_ids"}
 
         base_source = pipeline.source
         plan = _iter_plan(pipeline_name, plan_slices(base_source, enriched_params))

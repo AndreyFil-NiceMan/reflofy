@@ -112,7 +112,7 @@ _BODY_PARAM_TYPES = (list, dict)
 def _is_body_param(p: Any) -> bool:
     """Whether a PipelineParameter is carried in the request body vs the query string.
 
-    List/dict values (e.g. an `ids` list) don't round-trip well as query params —
+    List/dict values (e.g. an `input_ids` list) don't round-trip well as query params —
     they get clunky Swagger rendering and string-coerced items — so they go in the
     body. Anything with `choices` stays a query-string dropdown.
     """

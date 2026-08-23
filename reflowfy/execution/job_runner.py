@@ -68,7 +68,7 @@ def job(records: List[Any], **params: Any) -> Any:
 
     Example:
         >>> def define_jobs(self, params):
-        ...     for entity_id in params["ids"]:
+        ...     for entity_id in params.get("input_ids", []):
         ...         yield job(fetch_rows(entity_id), current_id=entity_id)
     """
     from reflowfy.sources.static import StaticSource

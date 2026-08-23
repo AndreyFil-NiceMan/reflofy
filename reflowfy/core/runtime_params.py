@@ -62,9 +62,13 @@ class RuntimeParams(TypedDict, total=False):
     total_batches: int
     retry_count: int
     is_retry: bool
-    # IdBasedPipeline only: the IDs this job is about. (`ids` -- the caller's
-    # full list -- is a user parameter, not an execution-context key, so it is
-    # declared per pipeline rather than here.)
+    # IdBasedPipeline only. `input_ids` is the caller's whole list, and exists
+    # only while the execution is still being planned: `define_jobs` is called
+    # once, before any job exists, so it is the one hook with no "current"
+    # slice to read. The manager strips it from each job before dispatch (a job
+    # handling two IDs has no use for the other 999,998), so from
+    # `define_source` onward `current_ids`/`current_id` are the keys to read.
+    input_ids: List[Any]
     current_ids: List[Any]
     current_id: Any
     # Written by the framework when a hook raises SkipJob: the reason the job

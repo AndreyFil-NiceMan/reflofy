@@ -4,13 +4,23 @@ Scheduled Test Pipeline.
 Pipeline that fires on a cron schedule — used for E2E schedule tests.
 A very frequent cron (every minute) lets tests observe auto-triggering
 without waiting long.
+
+These write to the **console**, never to the shared mock HTTP server, and that
+is load-bearing: the scheduler fires them on its own clock, independently of
+whichever test happens to be running. Pointing them at `e2e_http` puts
+untransformed records into the record store that other suites assert over —
+those tests reset the store, run their pipeline, then assert every record
+carries their marker, so a scheduled fire landing inside that window fails them
+(`test_error_tolerant_pipeline_completes` did, once per full-suite run). The
+schedule tests only read `/schedules` and execution records, so they never
+needed the HTTP sink.
 """
 
 import uuid
 
 from reflowfy import AbstractPipeline, BaseDestination, Records, RuntimeParams, Transformations
 from tests.e2e.test_pipelines.sources import e2e_mock
-from tests.e2e.test_pipelines.destinations import e2e_http
+from tests.e2e.test_pipelines.destinations import e2e_console
 
 # Unique per service startup so stale hashes from previous runs never block run 1,
 # but stable within a single service lifetime so run 2 sees run 1's hashes.
@@ -33,7 +43,7 @@ class E2EScheduledTestPipeline(AbstractPipeline[RuntimeParams]):
     def define_destination(
         self, records: Records, runtime_params: RuntimeParams
     ) -> BaseDestination:
-        return e2e_http(body={"records": records})
+        return e2e_console()
 
     def define_transformations(
         self, records: Records, runtime_params: RuntimeParams
@@ -53,7 +63,7 @@ class E2EScheduledSlowPipeline(AbstractPipeline[RuntimeParams]):
     def define_destination(
         self, records: Records, runtime_params: RuntimeParams
     ) -> BaseDestination:
-        return e2e_http(body={"records": records})
+        return e2e_console()
 
     def define_transformations(
         self, records: Records, runtime_params: RuntimeParams
@@ -74,7 +84,7 @@ class E2EScheduledNoDuplicatesPipeline(AbstractPipeline[RuntimeParams]):
     def define_destination(
         self, records: Records, runtime_params: RuntimeParams
     ) -> BaseDestination:
-        return e2e_http(body={"records": records})
+        return e2e_console()
 
     def define_transformations(
         self, records: Records, runtime_params: RuntimeParams

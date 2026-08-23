@@ -34,7 +34,7 @@ EXPECTED_JOBS = len(PARENT_IDS) * CHILDREN_PER_ID
 def _run(ids: list) -> str:
     resp = httpx.post(
         f"{BASE_URL}/run",
-        json={"pipeline_name": PIPELINE_NAME, "runtime_params": {"ids": ids}},
+        json={"pipeline_name": PIPELINE_NAME, "runtime_params": {"input_ids": ids}},
         timeout=30,
     )
     if resp.status_code == 404:
