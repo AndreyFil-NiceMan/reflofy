@@ -6,20 +6,27 @@ so define_source never runs and each child ID becomes its own job with its own
 transformations, destination write and retry.
 """
 
-from reflowfy import BaseDestination, IdBasedPipeline, Records, RuntimeParams, Transformations, job
+from reflowfy import (
+    BaseDestination,
+    IdBasedPipeline,
+    IdRuntimeParams,
+    Records,
+    Transformations,
+    job,
+)
 from tests.e2e.test_pipelines.destinations import e2e_http
 from tests.e2e.test_pipelines.transformations import id_fanout_stamp
 
 CHILDREN_PER_ID = 3
 
 
-class E2EIdBasedDefineJobsPipeline(IdBasedPipeline[RuntimeParams]):
+class E2EIdBasedDefineJobsPipeline(IdBasedPipeline[IdRuntimeParams]):
     """Each input ID expands into CHILDREN_PER_ID jobs, each tagged with its ID."""
 
     name = "e2e_id_based_define_jobs"
     rate_limit = 3000  # jobs per minute
 
-    def define_jobs(self, runtime_params):
+    def define_jobs(self, runtime_params: IdRuntimeParams):
         for parent_id in runtime_params.get("ids", []):
             for child in range(CHILDREN_PER_ID):
                 yield job(
@@ -32,11 +39,11 @@ class E2EIdBasedDefineJobsPipeline(IdBasedPipeline[RuntimeParams]):
     # never called, and an IdBasedPipeline must not require a dummy stub.
 
     def define_destination(
-        self, records: Records, runtime_params: RuntimeParams
+        self, records: Records, runtime_params: IdRuntimeParams
     ) -> BaseDestination:
         return e2e_http(body={"records": records})
 
     def define_transformations(
-        self, records: Records, runtime_params: RuntimeParams
+        self, records: Records, runtime_params: IdRuntimeParams
     ) -> Transformations:
         return [id_fanout_stamp()]

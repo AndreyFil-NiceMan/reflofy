@@ -56,7 +56,7 @@ import typing_extensions
 
 from reflowfy.core.exceptions import pipeline_step
 from reflowfy.core.query_loader import QueryLoaderMixin
-from reflowfy.core.runtime_params import P, Param, RuntimeParams
+from reflowfy.core.runtime_params import IdRuntimeParams, P, Param, RuntimeParams
 
 if TYPE_CHECKING:
     from reflowfy.destinations.base import BaseDestination
@@ -332,6 +332,36 @@ _REQUIREDNESS_MARKERS = frozenset(
 )
 
 
+_FRAMEWORK_KEYS = frozenset(RuntimeParams.__annotations__) | frozenset(
+    IdRuntimeParams.__annotations__
+)
+
+
+def _declared_keys(params_type: type) -> Set[str]:
+    """The keys ``params_type`` and its user-defined bases declare themselves.
+
+    A TypedDict's ``__annotations__`` is the merged set of its own and its
+    bases' keys, so "did this class declare it?" is answered by subtracting
+    what ``__orig_bases__`` contributes — recursively, so a params type built
+    on another params type still owns what that one declared. The framework's
+    own TypedDicts declare nothing on a pipeline's behalf, which is what makes
+    their keys reserved.
+
+    Re-declaring a framework key claims it back as a real parameter: that is
+    how a plain ``AbstractPipeline`` keeps ``ids`` as its own while an
+    ``IdBasedPipeline`` inherits reflowfy's.
+    """
+    if params_type in (RuntimeParams, IdRuntimeParams):
+        return set()
+    bases = getattr(params_type, "__orig_bases__", ())
+    from_bases: Set[str] = set()
+    claimed: Set[str] = set()
+    for base in bases:
+        from_bases |= set(getattr(base, "__annotations__", {}))
+        claimed |= _declared_keys(base)
+    return claimed | (set(getattr(params_type, "__annotations__", {})) - from_bases)
+
+
 def params_from_typeddict(params_type: type) -> List[PipelineParameter]:
     """Derive the runtime parameter declarations from a params TypedDict.
 
@@ -340,9 +370,12 @@ def params_from_typeddict(params_type: type) -> List[PipelineParameter]:
     generated OpenAPI schema already consume — so a pipeline's parameters are
     declared once, as types, instead of twice.
 
-    Keys inherited from ``RuntimeParams`` are skipped: those are the framework's
-    own execution-context keys, not user parameters. So are keys marked
-    ``Param(internal=True)`` — enrichment keys the pipeline writes at runtime.
+    Keys *inherited* from ``RuntimeParams``/``IdRuntimeParams`` are skipped:
+    those are the framework's own execution-context keys, not user parameters.
+    Re-declaring one in your own TypedDict claims it back as a real parameter —
+    that is how a plain ``AbstractPipeline`` keeps ``ids`` as its own. Keys
+    marked ``Param(internal=True)`` are skipped too — enrichment keys the
+    pipeline writes at runtime.
 
     Args:
         params_type: A TypedDict subclassing ``RuntimeParams``.
@@ -360,7 +393,7 @@ def params_from_typeddict(params_type: type) -> List[PipelineParameter]:
     """
     hints = get_type_hints(params_type, include_extras=True)
     required: frozenset[str] = getattr(params_type, "__required_keys__", frozenset())
-    reserved = set(RuntimeParams.__annotations__)
+    reserved = _FRAMEWORK_KEYS - _declared_keys(params_type)
 
     params: List[PipelineParameter] = []
     for key, hint in hints.items():

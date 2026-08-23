@@ -15,6 +15,7 @@ from typing_extensions import Annotated, NotRequired, Required
 from reflowfy import (
     AbstractPipeline,
     IdBasedPipeline,
+    IdRuntimeParams,
     Param,
     PipelineParameter,
     RuntimeParams,
@@ -216,3 +217,57 @@ class TestDerivedDefineParameters:
             name = "unit_typed_params_child"
 
         assert Child()._params_type is SampleParams
+
+
+class TestIdsIsTypedForIdBasedPipelines:
+    """`ids` is reflowfy's key on an IdBasedPipeline and the author's anywhere else.
+
+    `IdRuntimeParams` exists so an ID-based pipeline can read
+    `runtime_params["ids"]` with completion; the derivation must still not turn
+    that inherited key into a second `ids` parameter (which `get_all_parameters`
+    rejects). A plain AbstractPipeline declaring its own `ids` keeps it.
+    """
+
+    def test_inherited_ids_is_not_a_user_parameter(self):
+        class IdParams(IdRuntimeParams, total=False):
+            region: Annotated[NotRequired[str], Param("Region", default="eu")]
+
+        assert [p.name for p in params_from_typeddict(IdParams)] == ["region"]
+
+    def test_id_based_pipeline_with_id_runtime_params_keeps_one_ids(self):
+        class IdParams(IdRuntimeParams, total=False):
+            region: Annotated[NotRequired[str], Param("Region", default="eu")]
+
+        class IdPipeline(IdBasedPipeline[IdParams]):
+            name = "unit_typed_params_id_runtime"
+
+            def define_jobs(self, runtime_params: IdParams):
+                for entity_id in runtime_params.get("ids", []):
+                    yield entity_id
+
+            def define_destination(self, records, runtime_params):  # type: ignore[no-untyped-def]
+                return None
+
+            def define_transformations(self, records, runtime_params):  # type: ignore[no-untyped-def]
+                return []
+
+        names = [p.name for p in IdPipeline().get_all_parameters()]
+        assert names.count("ids") == 1
+        assert names == ["ids", "region"]
+
+    def test_self_declared_ids_stays_a_user_parameter(self):
+        class ApiParams(RuntimeParams, total=False):
+            ids: Annotated[NotRequired[List[Any]], Param("IDs to fetch", default=[1, 2])]
+
+        ids = _by_name(params_from_typeddict(ApiParams))["ids"]
+        assert ids.default == [1, 2]
+        assert ids.param_type is list
+
+    def test_self_declared_ids_survives_a_further_subclass(self):
+        class ApiParams(RuntimeParams, total=False):
+            ids: Annotated[NotRequired[List[Any]], Param("IDs to fetch", default=[1, 2])]
+
+        class MoreParams(ApiParams, total=False):
+            region: NotRequired[str]
+
+        assert _by_name(params_from_typeddict(MoreParams))["ids"].default == [1, 2]

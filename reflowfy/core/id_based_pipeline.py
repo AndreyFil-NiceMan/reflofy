@@ -41,18 +41,25 @@ the splitting. Each yielded element is one job, so each child ID gets its own
 transformations, its own destination write, and its own retry. Wrap it in
 ``job(...)`` to tag the job with the params it should run with, the way the
 built-in plan passes ``current_id``/``current_ids``:
-    >>> from reflowfy import job
+    >>> from reflowfy import IdRuntimeParams, job
     >>>
-    >>> class ChildSyncPipeline(IdBasedPipeline):
+    >>> class ChildSyncPipeline(IdBasedPipeline[IdRuntimeParams]):
     ...     name = "child_sync"
     ...
-    ...     def define_jobs(self, runtime_params):
+    ...     def define_jobs(self, runtime_params: IdRuntimeParams):
     ...         for parent_id in runtime_params["ids"]:
     ...             for child_id in fetch_child_ids(parent_id):
     ...                 yield job(
     ...                     [{"parent_id": parent_id, "child_id": child_id}],
     ...                     current_id=parent_id,
     ...                 )
+
+Declare the pipeline's params type as a subclass of
+:class:`~reflowfy.core.runtime_params.IdRuntimeParams` rather than
+``RuntimeParams``: it is the same TypedDict plus the ``ids`` list reflowfy
+injects here, so ``runtime_params["ids"]`` type-checks and completes. Add your
+own keys to it; do **not** re-declare ``ids`` — reflowfy already declares that
+parameter for every IdBasedPipeline.
 
 Note that overriding ``define_jobs`` replaces the built-in plan entirely, so
 ``current_ids`` is no longer filled in for you — pass what each job needs via
@@ -98,6 +105,10 @@ class IdBasedPipeline(AbstractPipeline[P]):
     - Implement `define_transformations(records, runtime_params)`
 
     Subclasses MAY:
+    - Declare their parameters as a type: `IdBasedPipeline[MyParams]` where
+      `MyParams(IdRuntimeParams, total=False)`. `IdRuntimeParams` is
+      `RuntimeParams` plus the injected `ids` list, so `runtime_params["ids"]`
+      is typed and completes.
     - Override `define_parameters()` to add extra parameters (beyond `ids`)
     - Override `define_rate_limit()` for dynamic rate limiting
     - Override `define_jobs()` to own the splitting entirely — e.g. to expand
