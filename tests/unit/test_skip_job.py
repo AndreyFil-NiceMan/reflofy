@@ -47,6 +47,58 @@ def test_skip_job_drops_the_job(where):
     assert runtime_params["skip_reason"] in ("nothing useful", "nothing ready")
 
 
+async def test_worker_path_drops_the_job(monkeypatch):
+    """The Kafka worker path (WorkerExecutor.execute_job) drops the job too."""
+    from reflowfy.core.registry import pipeline_registry
+    from reflowfy.worker.executor import WorkerExecutor
+
+    class _WorkerPipeline:
+        name = "p"
+
+        def define_transformations(self, records, params):
+            return []
+
+        def define_destination(self, records, params):
+            raise SkipJob("worker drop")
+
+    monkeypatch.setattr(pipeline_registry, "get", lambda name: _WorkerPipeline())
+
+    recorded = {}
+
+    async def _capture(execution_id, job_id, stats):
+        recorded["stats"] = stats
+
+    executor = WorkerExecutor(database_url="postgresql://x/y")
+    monkeypatch.setattr(executor, "_update_job_in_db", _capture)
+
+    ok = await executor.execute_job(
+        {
+            "schema_version": 2,
+            "execution_id": "e",
+            "job_id": "j",
+            "pipeline_name": "p",
+            "source": {"type": "StaticSource", "config": {"records": [{"id": 1}]}},
+            "metadata": {
+                "batch_id": "b",
+                "created_at": "t",
+                "batch_number": 1,
+                "total_batches": 1,
+                "retry_count": 0,
+                "is_retry": False,
+                "runtime_params": {},
+                "source_metadata": None,
+            },
+        }
+    )
+
+    stats = recorded["stats"]
+    assert ok is True, "a dropped job is not a failure"
+    # No destination was ever resolved, so nothing could be sent.
+    assert stats.skip_reason == "worker drop"
+    assert stats.success is True
+    assert stats.records_output == 0
+
+
 def test_skipped_job_is_its_own_metric_status():
     """A dropped job must not be counted as an ordinary completed one."""
     from prometheus_client import REGISTRY
