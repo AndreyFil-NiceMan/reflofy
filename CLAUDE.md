@@ -54,6 +54,29 @@ uv run python -m build
 
 `pytest` runs in `asyncio_mode = auto` — async test functions need no decorator.
 
+## Observability (check this for every feature)
+
+Whatever the feature, before calling it done ask where it becomes invisible in
+production, and wire the ones that apply. `reflowfy/observability/` already has all
+three; none of them need new infrastructure:
+
+- **Log it** — `get_logger(__name__)`, `logger.info` for a decision a user would ask
+  about ("why did nothing arrive?"), `debug` for volume. Inside the worker the job's
+  `log_context` already binds execution_id/job_id/pipeline_name, so don't re-pass
+  them. Never log record contents or credentials.
+- **Persist it on the job** — a new terminal outcome or a per-job number belongs in
+  `JobStats` (`worker/executor.py`); it lands in the job row's `stats` JSON and is
+  queryable after the fact. A log line alone is gone once it rotates.
+- **Count it** — a new outcome gets a label value on the existing
+  `reflowfy_jobs_processed_total` counter (as `skipped`/`deduplicated` do) rather than
+  a new metric. Labels are low-cardinality only: never a message, an ID, or a record
+  value.
+
+The bar: a new terminal state or silent short-circuit must not be indistinguishable
+from an ordinary success in logs, job stats *and* metrics. `### Dropping a job` below
+is the worked example. Skip all three only for pure refactors and internal helpers —
+and say so.
+
 ## Architecture
 
 Three deployable services, all sharing the same package and the same PostgreSQL database. Each service auto-discovers user code on startup; they coordinate only through Postgres and Kafka, never by direct calls.
@@ -124,6 +147,26 @@ Where a third-party library genuinely has no types, the suppression is **file-sc
 ### Execution modes
 
 `EXECUTION_MODE` env var selects `local` (in-process via `LocalDispatcher`, used by the default docker-compose) or `distributed` (Kafka via `KafkaDispatcher`). Same pipeline code runs in both.
+
+### Dropping a job
+
+`raise SkipJob("why")` from `source.fetch`, a transformation, `define_transformations`
+or `define_destination` to drop the current job: `run_job_records` catches it and
+returns the same empty-slice tuple an empty fetch does, so every caller (worker,
+`LocalExecutor`, `reflowfy test`) treats it as a no-op — no destination write, no
+failure. It subclasses `PipelineError`, so `pipeline_step` passes it through
+untouched; `transformation_runner` re-raises it instead of wrapping it in a
+`TransformationError`. The job records as `completed` with 0 records — there is no
+separate `skipped` state. A job whose fetch simply returns nothing already behaved
+this way. `define_source`/`define_jobs` run manager-side and are NOT covered.
+
+Observability: the reason rides back on `runtime_params["skip_reason"]` (a reserved
+key on `RuntimeParams`) rather than a 5th return value. The worker logs
+`Job <id>: dropped by pipeline (<reason>)` inside the job's `log_context`
+(execution_id/job_id/pipeline_name bound), stores `skip_reason` in the job's `stats`
+JSON, and counts it as `reflowfy_jobs_processed_total{status="skipped"}` — so a drop
+is not silently indistinguishable from an ordinary completed job. `LocalExecutor`
+logs the same reason.
 
 ### Content deduplication & DLQ
 

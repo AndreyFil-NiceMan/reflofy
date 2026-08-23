@@ -124,6 +124,9 @@ class LocalExecutor(BaseExecutor):
                 )
 
                 if not records:
+                    skip_reason = slice_params.get("skip_reason")
+                    if skip_reason:
+                        logger.info("Execution %s: job dropped (%s)", execution_id, skip_reason)
                     continue
 
                 logger.debug("Fetched %d records", len(records))
@@ -253,6 +256,9 @@ class LocalExecutor(BaseExecutor):
                         sub, pipeline, flat_id_params, limit=remaining
                     )
                     if not records:
+                        skip_reason = flat_id_params.get("skip_reason")
+                        if skip_reason:
+                            logger.info("ID %s: job dropped (%s)", current_id, skip_reason)
                         continue
                     for step in applied:
                         logger.debug(
@@ -292,9 +298,7 @@ class LocalExecutor(BaseExecutor):
             return status
 
         except Exception as e:
-            logger.error(
-                "IdBasedPipeline %s execution failed: %s", execution_id, e, exc_info=True
-            )
+            logger.error("IdBasedPipeline %s execution failed: %s", execution_id, e, exc_info=True)
             status.state = ExecutionState.FAILED
             status.failed_jobs = len(ids) - status.completed_jobs
             status.error_message = str(e)

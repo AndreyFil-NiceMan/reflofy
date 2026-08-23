@@ -15,12 +15,15 @@ test/preview paths cannot drift from what the worker actually runs.
 
 from typing import Any, Dict, Iterator, List, Optional, Tuple, cast
 
-from reflowfy.core.exceptions import pipeline_step
+from reflowfy.core.exceptions import SkipJob, pipeline_step
 from reflowfy.core.serialization import to_json_safe
 from reflowfy.execution.transformation_runner import (
     AppliedStep,
     apply_transformations_iteratively,
 )
+from reflowfy.observability.logging import get_logger
+
+logger = get_logger("execution.job_runner")
 
 
 def chunk(records: List[Any], size: int = 1) -> List[List[Any]]:
@@ -163,18 +166,27 @@ def run_job_records(
     transformation runner.
     """
     name = getattr(pipeline, "name", "<unknown>")
-    with pipeline_step("source fetch", name):
-        records = to_json_safe(source.fetch(runtime_params))
-    if limit is not None:
-        records = records[:limit]
-    if not records:
-        # Empty slice (e.g. Elastic sliced-scroll hash-partitions unevenly, so a
-        # slice can match zero docs). Nothing to transform; skip so transformations
-        # aren't invoked on []. Every caller already treats empty records as a no-op.
-        return records, [], [], None
-    transformed_records, applied = apply_transformations_iteratively(
-        pipeline, records, runtime_params
-    )
-    with pipeline_step("define_destination", name):
-        destination = pipeline.define_destination(transformed_records, runtime_params)
+    try:
+        with pipeline_step("source fetch", name):
+            records = to_json_safe(source.fetch(runtime_params))
+        if limit is not None:
+            records = records[:limit]
+        if not records:
+            # Empty slice (e.g. Elastic sliced-scroll hash-partitions unevenly, so a
+            # slice can match zero docs). Nothing to transform; skip so transformations
+            # aren't invoked on []. Every caller already treats empty records as a no-op.
+            return records, [], [], None
+        transformed_records, applied = apply_transformations_iteratively(
+            pipeline, records, runtime_params
+        )
+        with pipeline_step("define_destination", name):
+            destination = pipeline.define_destination(transformed_records, runtime_params)
+    except SkipJob as exc:
+        # The pipeline dropped this job. Same shape as an empty slice, which every
+        # caller already treats as a no-op — no destination write, no failure.
+        # Reason rides on runtime_params (a per-job dict) so the caller can put it
+        # in the job's stats/metrics without run_job_records growing a 5th return.
+        runtime_params["skip_reason"] = str(exc)
+        logger.info("Pipeline '%s': job dropped (%s)", name, exc)
+        return [], [], [], None
     return records, transformed_records, applied, destination

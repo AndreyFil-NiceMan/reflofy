@@ -67,6 +67,9 @@ class RuntimeParams(TypedDict, total=False):
     # declared per pipeline rather than here.)
     current_ids: List[Any]
     current_id: Any
+    # Written by the framework when a hook raises SkipJob: the reason the job
+    # was dropped. Lands in the job's stats row and its worker log line.
+    skip_reason: str
     # Set by the DLQ scheduler on a replayed run.
     _dlq_source: bool
     _dlq_job_ids: List[Any]
