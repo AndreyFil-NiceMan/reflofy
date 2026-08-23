@@ -43,6 +43,7 @@ class JobStats:
         self.error_traceback: Optional[str] = None
         self.success = False
         self.deduplicated = False
+        self.skip_reason: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
@@ -60,6 +61,7 @@ class JobStats:
             "transformation_times": self.transformation_times,
             "destination_write_time": round(self.destination_write_time, 3),
             "error": self.error,
+            "skip_reason": self.skip_reason,
             "success": self.success,
         }
 
@@ -117,12 +119,18 @@ class WorkerExecutor:
         error_type: Optional[str],
         duration: float,
         records: int,
+        skipped: bool = False,
     ) -> None:
         """Emit Prometheus metrics for one finished job.
 
         # ponytail: error_type = exception class name only — never the message (cardinality).
         """
-        status = "deduplicated" if deduplicated else ("completed" if success else "failed")
+        if deduplicated:
+            status = "deduplicated"
+        elif skipped:
+            status = "skipped"
+        else:
+            status = "completed" if success else "failed"
         metrics.jobs_processed_total.labels(pipeline=pipeline, status=status).inc()
         metrics.job_processing_duration_seconds.labels(pipeline=pipeline).observe(duration)
         # Only count records that actually made it through (success); a job that
@@ -157,6 +165,7 @@ class WorkerExecutor:
                 pipeline_name,
                 success=stats.success,
                 deduplicated=stats.deduplicated,
+                skipped=stats.skip_reason is not None,
                 error_type=stats.error_type,
                 duration=duration,
                 records=stats.records_output,
@@ -201,7 +210,13 @@ class WorkerExecutor:
             stats.records_input = len(records)
 
             if not records:
-                logger.info("Job %s: no records to process", job_id)
+                # SkipJob leaves its reason on runtime_params; without one this is
+                # just an empty slice.
+                stats.skip_reason = runtime_params.get("skip_reason")
+                if stats.skip_reason:
+                    logger.info("Job %s: dropped by pipeline (%s)", job_id, stats.skip_reason)
+                else:
+                    logger.info("Job %s: no records to process", job_id)
                 stats.success = True
                 stats.records_output = 0
                 stats.end_time = time.time()

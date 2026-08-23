@@ -184,6 +184,9 @@ def run_job_records(
     except SkipJob as exc:
         # The pipeline dropped this job. Same shape as an empty slice, which every
         # caller already treats as a no-op — no destination write, no failure.
+        # Reason rides on runtime_params (a per-job dict) so the caller can put it
+        # in the job's stats/metrics without run_job_records growing a 5th return.
+        runtime_params["skip_reason"] = str(exc)
         logger.info("Pipeline '%s': job dropped (%s)", name, exc)
         return [], [], [], None
     return records, transformed_records, applied, destination

@@ -137,6 +137,14 @@ untouched; `transformation_runner` re-raises it instead of wrapping it in a
 separate `skipped` state. A job whose fetch simply returns nothing already behaved
 this way. `define_source`/`define_jobs` run manager-side and are NOT covered.
 
+Observability: the reason rides back on `runtime_params["skip_reason"]` (a reserved
+key on `RuntimeParams`) rather than a 5th return value. The worker logs
+`Job <id>: dropped by pipeline (<reason>)` inside the job's `log_context`
+(execution_id/job_id/pipeline_name bound), stores `skip_reason` in the job's `stats`
+JSON, and counts it as `reflowfy_jobs_processed_total{status="skipped"}` — so a drop
+is not silently indistinguishable from an ordinary completed job. `LocalExecutor`
+logs the same reason.
+
 ### Content deduplication & DLQ
 
 Job IDs are plain `uuid4`. Idempotency is enforced **worker-side, by content**: when `enable_duplicate_jobs=False` the manager sets `dedup_check` on the payload, and the worker hashes the job's content (`execution/content_dedup.py`: pipeline name + transformation names + fetched records + the job's own `job_params`) and claims that hash in the `processed_content` table. First claimant runs; a later job with the same hash is marked `deduplicated` and never written. Note the hash covers records, not the source descriptor, so it is computed after fetching.
