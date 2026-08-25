@@ -54,7 +54,11 @@ class TestPlanSlicesJobPlan:
         slices = list(plan_slices(plan, {}))
 
         assert len(slices) == 3
-        assert [s.fetch({}) for s in slices] == [[{"id": 0}], [{"id": 1}], [{"id": 2}]]
+        assert [s.fetch({}) for s in slices] == [
+            [{"id": 0}],
+            [{"data": {"id": 1}}],
+            [{"data": {"id": 2}}],
+        ]
 
     def test_flat_record_list_is_rejected_with_a_hint(self):
         with pytest.raises(TypeError, match="chunk"):

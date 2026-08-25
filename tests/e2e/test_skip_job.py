@@ -50,7 +50,13 @@ def _wait(client, execution_id):
 def _delivered(marker):
     """Records the mock webhook received for this run only."""
     records = httpx.get(f"{MOCK_URL}/records", timeout=10).json().get("records", [])
-    return [r for r in records if isinstance(r, dict) and r.get("marker") == marker]
+    return [
+        r["data"]
+        for r in records
+        if isinstance(r, dict)
+        and isinstance(r.get("data"), dict)
+        and r["data"].get("marker") == marker
+    ]
 
 
 def _skipped_metric(client):

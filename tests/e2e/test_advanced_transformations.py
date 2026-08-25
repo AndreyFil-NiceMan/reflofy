@@ -177,10 +177,11 @@ class TestRuntimeParams:
         _, records = _get_records(limit=20)
         verified = 0
         for record in records:
-            if "id" in record and "_value" in record:
-                expected = record["id"] * 3
+            data = record.get("data", {})
+            if "id" in data and "_value" in record:
+                expected = data["id"] * 3
                 assert record["_value"] == expected, (
-                    f"id={record['id']}: expected _value={expected}, got {record['_value']}"
+                    f"id={data['id']}: expected _value={expected}, got {record['_value']}"
                 )
                 verified += 1
 
@@ -199,10 +200,11 @@ class TestRuntimeParams:
             assert record.get("_env") == "default", (
                 f"Expected _env='default' when runtime_params absent, got '{record.get('_env')}'"
             )
-            if "id" in record and "_value" in record:
-                assert record["_value"] == record["id"], (
+            data = record.get("data", {})
+            if "id" in data and "_value" in record:
+                assert record["_value"] == data["id"], (
                     f"Expected _value == id when multiplier absent, "
-                    f"but id={record['id']}, _value={record['_value']}"
+                    f"but id={data['id']}, _value={record['_value']}"
                 )
 
 

@@ -94,7 +94,7 @@ class TestTypedParams:
         assert mine, "No records for this execution"
         # e2e_mock values are 1-based; each was multiplied by the defaulted 3.
         for record in mine:
-            assert record["value"] % 3 == 0, f"value not multiplied: {record}"
+            assert record["data"]["value"] % 3 == 0, f"value not multiplied: {record}"
             assert record["_env"] == "dev"
 
     def test_caller_value_overrides_derived_default(self, client, check_mock_http):

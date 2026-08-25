@@ -6,6 +6,7 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple, cast
 from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import ApiError
 
+from reflowfy.core.types import Records, wrap_as_record
 from reflowfy.sources.base import BaseSource, SourceError, SourceJob
 
 # The manager opens a PIT while planning; workers search it later, one
@@ -97,7 +98,7 @@ class ElasticSource(BaseSource):
             self._client = Elasticsearch(**kwargs)
         return self._client
 
-    def fetch(self, runtime_params: Dict[str, Any], limit: Optional[int] = None) -> List[Any]:
+    def fetch(self, runtime_params: Dict[str, Any], limit: Optional[int] = None) -> Records:
         """
         Fetch data from Elasticsearch (local mode).
 
@@ -140,7 +141,7 @@ class ElasticSource(BaseSource):
                     hits = page["hits"]["hits"]
                     if not hits:
                         break
-                    out.extend(h["_source"] for h in hits)
+                    out.extend(wrap_as_record(h["_source"]) for h in hits)
                     search_after = hits[-1]["sort"]
                     if limit and len(out) >= limit:
                         return out[:limit]
@@ -166,7 +167,7 @@ class ElasticSource(BaseSource):
                     hits = resp["hits"]["hits"]
                     if not hits:
                         break
-                    records.extend(h["_source"] for h in hits)
+                    records.extend(wrap_as_record(h["_source"]) for h in hits)
                     search_after = hits[-1]["sort"]
                     if limit and len(records) >= limit:
                         return records[:limit]
@@ -193,7 +194,7 @@ class ElasticSource(BaseSource):
 
             records = []
             while hits:
-                records.extend(hit["_source"] for hit in hits)
+                records.extend(wrap_as_record(hit["_source"]) for hit in hits)
                 if limit and len(records) >= limit:
                     records = records[:limit]
                     break
@@ -381,7 +382,7 @@ class ElasticSource(BaseSource):
 
             while hits:
                 # Extract source documents
-                records = [hit["_source"] for hit in hits]
+                records = [wrap_as_record(hit["_source"]) for hit in hits]
 
                 yield SourceJob(
                     records=records,

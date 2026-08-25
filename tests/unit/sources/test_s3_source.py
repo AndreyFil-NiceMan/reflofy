@@ -118,9 +118,9 @@ class TestS3Source:
         records = source.fetch({})
 
         assert len(records) == 3
-        assert records[0]["key"] == "data/file1.json"
-        assert records[0]["size"] == 1024
-        assert "last_modified" in records[0]
+        assert records[0]["data"]["key"] == "data/file1.json"
+        assert records[0]["data"]["size"] == 1024
+        assert "last_modified" in records[0]["data"]
 
     def test_fetch_with_limit(self, mock_s3_client, sample_objects):
         """Test fetching with limit."""
@@ -155,7 +155,7 @@ class TestS3Source:
 
         # Should only include .json files
         assert len(records) == 2
-        assert all(r["key"].endswith(".json") for r in records)
+        assert all(r["data"]["key"].endswith(".json") for r in records)
 
     def test_fetch_json_content(self, mock_s3_client, sample_objects):
         """Test fetching and parsing JSON content."""
@@ -180,8 +180,8 @@ class TestS3Source:
 
         # Each JSON file becomes a record
         assert len(records) == 2
-        assert records[0]["name"] == "test"
-        assert records[0]["value"] == 123
+        assert records[0]["data"]["name"] == "test"
+        assert records[0]["data"]["value"] == 123
 
     def test_split_jobs_pagination(self, mock_s3_client):
         """Test job splitting with pagination."""

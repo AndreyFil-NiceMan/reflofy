@@ -4,6 +4,7 @@ from typing import Any, Dict, Iterator, List, Optional, Union, cast
 
 import httpx
 
+from reflowfy.core.types import Records, wrap_as_record
 from reflowfy.http_auth import build_auth_headers
 from reflowfy.sources.base import BaseSource, SourceError, SourceJob
 from reflowfy.sources.schemas import IDBasedAPISourceConfig
@@ -171,7 +172,7 @@ class IDBasedAPISource(BaseSource):
         except httpx.HTTPStatusError:
             return None
 
-    def _fetch_batch(self, ids_batch: List[Union[str, int]]) -> List[Any]:
+    def _fetch_batch(self, ids_batch: List[Union[str, int]]) -> Records:
         """Send the batch request and return the extracted records.
 
         The request body is ``config["body"]`` verbatim — the caller is
@@ -192,7 +193,7 @@ class IDBasedAPISource(BaseSource):
             else:
                 response = client.request(method, endpoint, json=body, params=query)
             response.raise_for_status()
-            return self._extract_records(response.json())
+            return [wrap_as_record(item) for item in self._extract_records(response.json())]
         except httpx.HTTPStatusError as e:
             raise SourceError(
                 "id_based_api", f"HTTP {e.response.status_code}: {e.response.text}", e
@@ -204,7 +205,7 @@ class IDBasedAPISource(BaseSource):
     # Public interface
     # ------------------------------------------------------------------
 
-    def fetch(self, runtime_params: Dict[str, Any], limit: Optional[int] = None) -> List[Any]:
+    def fetch(self, runtime_params: Dict[str, Any], limit: Optional[int] = None) -> Records:
         """Fetch resources by ID (local/preview mode)."""
         self.resolve_parameters(runtime_params)
         ids = self._get_all_ids(runtime_params)
@@ -214,11 +215,11 @@ class IDBasedAPISource(BaseSource):
         if not self._is_per_id_mode():
             return self._fetch_batch(ids)
 
-        records: List[Any] = []
+        records: Records = []
         for id_value in ids:
             record = self._fetch_by_id(id_value)
             if record:
-                records.append(record)
+                records.append(wrap_as_record(record))
         return records
 
     def split_jobs(
@@ -255,11 +256,11 @@ class IDBasedAPISource(BaseSource):
 
         for i in range(0, len(ids), batch_size):
             id_batch = ids[i : i + batch_size]
-            batch_records: List[Any] = []
+            batch_records: Records = []
             for id_value in id_batch:
                 record = self._fetch_by_id(id_value)
                 if record:
-                    batch_records.append(record)
+                    batch_records.append(wrap_as_record(record))
             if batch_records:
                 yield SourceJob(
                     records=batch_records,

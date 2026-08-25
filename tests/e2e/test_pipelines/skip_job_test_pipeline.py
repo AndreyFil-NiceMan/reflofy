@@ -30,7 +30,7 @@ class SkipJobParams(RuntimeParams, total=False):
 @transformation("e2e_drop_job")
 def e2e_drop_job(records: List[Any], runtime_params: Dict[str, Any]) -> List[Any]:
     """Drop the job from inside a transformation."""
-    raise SkipJob(f"transformation dropped record {records[0].get('id')}")
+    raise SkipJob(f"transformation dropped record {records[0]['data'].get('id')}")
 
 
 class E2ESkipJobPipeline(AbstractPipeline[SkipJobParams]):
@@ -60,9 +60,9 @@ class E2ESkipJobPipeline(AbstractPipeline[SkipJobParams]):
         self, records: List[Any], runtime_params: SkipJobParams
     ) -> BaseDestination:
         if self._drops(records):
-            raise SkipJob(f"destination dropped record {records[0]['id']}")
+            raise SkipJob(f"destination dropped record {records[0]['data']['id']}")
         return e2e_http(body={"records": records})
 
     @staticmethod
     def _drops(records: List[Any]) -> bool:
-        return bool(records) and bool(records[0].get("drop"))
+        return bool(records) and bool(records[0]["data"].get("drop"))
