@@ -17,6 +17,9 @@ needed the HTTP sink.
 """
 
 import uuid
+from typing import Literal
+
+from typing_extensions import NotRequired
 
 from reflowfy import (
     AbstractPipeline,
@@ -28,6 +31,15 @@ from reflowfy import (
 )
 from tests.e2e.test_pipelines.sources import e2e_mock
 from tests.e2e.test_pipelines.destinations import e2e_console
+
+
+class MultiScheduleParams(RuntimeParams, total=False):
+    """The one key a named schedule's ``params`` can set: how many records
+    to fetch. Different per named schedule, so the fired execution's
+    total_jobs count proves which schedule's params actually reached the run.
+    """
+
+    mode: NotRequired[Literal["fast", "full"]]
 
 # Unique per service startup so stale hashes from previous runs never block run 1,
 # but stable within a single service lifetime so run 2 sees run 1's hashes.
@@ -100,12 +112,13 @@ class E2EScheduledNoDuplicatesPipeline(AbstractPipeline[RuntimeParams]):
         return []
 
 
-class E2EMultiSchedulePipeline(AbstractPipeline[RuntimeParams]):
+class E2EMultiSchedulePipeline(AbstractPipeline[MultiScheduleParams]):
     """E2E pipeline with two named schedules, each with its own params.
 
-    Exercises the multi-schedule feature end to end: both fire independently
-    (on their own cron + params), never auto-firing during a normal test run
-    (both crons are "once a year", on different days).
+    Verifies /schedules registers both named schedules with their own cron
+    and params. Never auto-fires during a normal test run (both crons are
+    "once a year", on different days) — firing + param-threading is covered
+    separately by E2EMultiScheduleFrequentPipeline below.
     """
 
     name = "e2e_multi_schedule_test"
@@ -114,15 +127,48 @@ class E2EMultiSchedulePipeline(AbstractPipeline[RuntimeParams]):
         ScheduledRun(name="evening", cron="0 17 2 1 *", params={"mode": "full"}),
     ]
 
-    def define_source(self, runtime_params):
-        return e2e_mock(count=5, batch_size=5)
+    def define_source(self, runtime_params: MultiScheduleParams):
+        count = 2 if runtime_params.get("mode") == "fast" else 5
+        return e2e_mock(count=count, batch_size=1)
 
     def define_destination(
-        self, records: Records, runtime_params: RuntimeParams
+        self, records: Records, runtime_params: MultiScheduleParams
     ) -> BaseDestination:
         return e2e_console()
 
     def define_transformations(
-        self, records: Records, runtime_params: RuntimeParams
+        self, records: Records, runtime_params: MultiScheduleParams
+    ) -> Transformations:
+        return []
+
+
+class E2EMultiScheduleFrequentPipeline(AbstractPipeline[MultiScheduleParams]):
+    """E2E pipeline with two named schedules on the same every-minute cron.
+
+    Both fire on their own clock, but with different params — "fast" fetches
+    2 records (2 jobs, batch_size=1) and "full" fetches 5 (5 jobs). Each
+    PipelineSchedule row tracks its own `last_execution_id`, so a test can
+    read the schedule-specific execution and assert its `total_jobs` matches
+    that schedule's params — proving the stored runtime_params actually
+    reached the fired run, not just the /schedules listing.
+    """
+
+    name = "e2e_multi_schedule_frequent_test"
+    schedules = [
+        ScheduledRun(name="fast", cron="* * * * *", params={"mode": "fast"}),
+        ScheduledRun(name="full", cron="* * * * *", params={"mode": "full"}),
+    ]
+
+    def define_source(self, runtime_params: MultiScheduleParams):
+        count = 2 if runtime_params.get("mode") == "fast" else 5
+        return e2e_mock(count=count, batch_size=1)
+
+    def define_destination(
+        self, records: Records, runtime_params: MultiScheduleParams
+    ) -> BaseDestination:
+        return e2e_console()
+
+    def define_transformations(
+        self, records: Records, runtime_params: MultiScheduleParams
     ) -> Transformations:
         return []

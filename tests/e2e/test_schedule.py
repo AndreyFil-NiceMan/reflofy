@@ -22,6 +22,7 @@ SCHEDULED_PIPELINE = "e2e_scheduled_test"
 SLOW_SCHEDULED_PIPELINE = "e2e_scheduled_slow_test"
 NO_DUPLICATES_SCHEDULED_PIPELINE = "e2e_scheduled_no_duplicates_test"
 MULTI_SCHEDULE_PIPELINE = "e2e_multi_schedule_test"
+MULTI_SCHEDULE_FREQUENT_PIPELINE = "e2e_multi_schedule_frequent_test"
 
 
 # ---------------------------------------------------------------------------
@@ -42,6 +43,28 @@ def _get_all_schedules(client: httpx.Client, pipeline_name: str) -> list[dict]:
     resp = client.get("/schedules")
     resp.raise_for_status()
     return [e for e in resp.json()["schedules"] if e["pipeline_name"] == pipeline_name]
+
+
+def _get_named_schedule(client: httpx.Client, pipeline_name: str, schedule_name: str) -> dict | None:
+    for entry in _get_all_schedules(client, pipeline_name):
+        if entry["schedule_name"] == schedule_name:
+            return entry
+    return None
+
+
+def _wait_for_new_execution(
+    client: httpx.Client, pipeline_name: str, schedule_name: str, prior_execution_id: str | None, max_wait: int
+) -> str:
+    """Poll a named schedule's last_execution_id until it changes, return the new id."""
+    deadline = time.time() + max_wait
+    while time.time() < deadline:
+        entry = _get_named_schedule(client, pipeline_name, schedule_name)
+        if entry and entry.get("last_execution_id") and entry["last_execution_id"] != prior_execution_id:
+            return entry["last_execution_id"]
+        time.sleep(5)
+    raise TimeoutError(
+        f"'{pipeline_name}' schedule '{schedule_name}' did not auto-fire within {max_wait}s"
+    )
 
 
 def _wait_for_execution(client: httpx.Client, execution_id: str, max_wait: int = 60) -> dict:
@@ -446,3 +469,54 @@ class TestMultiSchedulePipeline:
         assert data["pipeline_name"] == MULTI_SCHEDULE_PIPELINE
         names = {s["schedule_name"] for s in data["schedules"]}
         assert names == {"morning", "evening"}
+
+
+class TestMultiScheduleParamsReachTheFiredExecution:
+    """
+    The real point of multi-schedule support: each named schedule's stored
+    params must actually reach the run the scheduler fires — not just sit in
+    the /schedules row. e2e_multi_schedule_frequent_test declares "fast"
+    (params={"mode": "fast"} -> 2 jobs) and "full" (params={"mode": "full"}
+    -> 5 jobs) on the same every-minute cron, so a job-count mismatch would
+    mean the wrong (or no) params were threaded through.
+    """
+
+    @pytest.mark.slow
+    def test_fast_and_full_schedules_fire_with_their_own_params(self, reflow_client):
+        fast_before = _get_named_schedule(
+            reflow_client, MULTI_SCHEDULE_FREQUENT_PIPELINE, "fast"
+        )
+        full_before = _get_named_schedule(
+            reflow_client, MULTI_SCHEDULE_FREQUENT_PIPELINE, "full"
+        )
+        assert fast_before is not None and full_before is not None
+
+        fast_execution_id = _wait_for_new_execution(
+            reflow_client,
+            MULTI_SCHEDULE_FREQUENT_PIPELINE,
+            "fast",
+            fast_before.get("last_execution_id"),
+            max_wait=90,
+        )
+        full_execution_id = _wait_for_new_execution(
+            reflow_client,
+            MULTI_SCHEDULE_FREQUENT_PIPELINE,
+            "full",
+            full_before.get("last_execution_id"),
+            max_wait=90,
+        )
+        assert fast_execution_id != full_execution_id
+
+        fast_stats = _wait_for_execution(reflow_client, fast_execution_id, max_wait=60)
+        full_stats = _wait_for_execution(reflow_client, full_execution_id, max_wait=60)
+
+        assert fast_stats["total_jobs"] == 2, (
+            f"'fast' schedule (params={{'mode': 'fast'}}) should fire with 2 jobs, "
+            f"got {fast_stats['total_jobs']} — its runtime_params were not threaded "
+            "through to the fired execution"
+        )
+        assert full_stats["total_jobs"] == 5, (
+            f"'full' schedule (params={{'mode': 'full'}}) should fire with 5 jobs, "
+            f"got {full_stats['total_jobs']} — its runtime_params were not threaded "
+            "through to the fired execution"
+        )
