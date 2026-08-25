@@ -37,7 +37,7 @@ def test_mock_split_by_batch_size():
     subs = list(src.split({}))
     assert len(subs) == 3
     assert [len(s.config["data"]) for s in subs] == [10, 10, 5]
-    assert subs[0].fetch({}) == [{"i": i} for i in range(10)]
+    assert subs[0].fetch({}) == [{"data": {"i": i}} for i in range(10)]
 
 
 def test_sql_split_id_range(monkeypatch):
@@ -300,7 +300,7 @@ def test_elastic_fetch_slice_paginates(monkeypatch):
     monkeypatch.setattr(src, "_get_client", lambda: _Client())
 
     out = src.fetch({})
-    assert out == [{"a": 1}, {"a": 2}]
+    assert out == [{"data": {"a": 1}}, {"data": {"a": 2}}]
     assert calls["n"] == 2
 
 
@@ -328,7 +328,7 @@ def test_elastic_fetch_single_job_scrolls_all_pages(monkeypatch):
 
     monkeypatch.setattr(src, "_get_client", lambda: _Client())
 
-    assert src.fetch({}) == [{"a": 1}, {"a": 2}, {"a": 3}]
+    assert src.fetch({}) == [{"data": {"a": 1}}, {"data": {"a": 2}}, {"data": {"a": 3}}]
 
 
 class _ScanES:
@@ -398,7 +398,7 @@ def test_elastic_split_docs_per_job_windows_partition_all_docs(monkeypatch):
     fetched = []
     for sub in subs:
         monkeypatch.setattr(sub, "_get_client", lambda: es)
-        fetched.extend(d["i"] for d in sub.fetch({}))
+        fetched.extend(d["data"]["i"] for d in sub.fetch({}))
     assert fetched == list(range(10))  # exact cover, in order
 
 
@@ -441,7 +441,7 @@ def test_elastic_fetch_window_pulls_exact_size(monkeypatch):
     monkeypatch.setattr(src, "_get_client", lambda: es)
 
     # Resumes after sort [4] and pulls exactly 3 docs, paging by size=2.
-    assert src.fetch({}) == [{"i": 5}, {"i": 6}, {"i": 7}]
+    assert src.fetch({}) == [{"data": {"i": 5}}, {"data": {"i": 6}}, {"data": {"i": 7}}]
 
 
 def test_elastic_split_docs_per_job_single_slice_yields_self(monkeypatch):

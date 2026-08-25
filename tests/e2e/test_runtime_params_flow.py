@@ -85,7 +85,7 @@ class TestFlatUserParams:
         assert len(records) > 0
         for r in records:
             assert r.get("_env") == "staging", f"_env not set correctly: {r}"
-            assert r.get("_value") == r.get("id", 0) * 3, f"_value wrong: {r}"
+            assert r.get("_value") == r.get("data", {}).get("id", 0) * 3, f"_value wrong: {r}"
 
 
 # ---------------------------------------------------------------------------

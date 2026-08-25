@@ -165,7 +165,7 @@ class TestTransformationChain:
         
         verified_count = 0
         for record in records_response["records"]:
-            record_id = record.get("id")
+            record_id = record.get("data", {}).get("id")
             category = record.get("_computed_category")
             
             if record_id is not None and category is not None:

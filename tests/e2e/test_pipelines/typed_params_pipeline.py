@@ -50,7 +50,7 @@ def typed_params_multiply(records: List[Any], runtime_params: Dict[str, Any]) ->
     """Multiply each record's value by the (possibly defaulted) multiplier."""
     multiplier = runtime_params.get("multiplier", 1)
     for record in records:
-        record["value"] = record.get("value", 1) * multiplier
+        record["data"]["value"] = record["data"].get("value", 1) * multiplier
         record["_env"] = runtime_params.get("env")
         record["_execution_id"] = runtime_params.get("execution_id")
     runtime_params["multiplied_count"] = len(records)

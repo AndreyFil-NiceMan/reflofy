@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Iterator, List, Optional
 
 from reflowfy.core.execution_context import parameter_resolver
+from reflowfy.core.types import Records
 
 
 @dataclass
@@ -17,7 +18,7 @@ class SourceJob:
         metadata: Job-specific metadata (e.g., scroll_id, offset, page_num)
     """
 
-    records: List[Any]
+    records: Records
     metadata: Dict[str, Any]
 
 
@@ -86,7 +87,7 @@ class BaseSource(ABC):
         yield self
 
     @abstractmethod
-    def fetch(self, runtime_params: Dict[str, Any], limit: Optional[int] = None) -> List[Any]:
+    def fetch(self, runtime_params: Dict[str, Any], limit: Optional[int] = None) -> Records:
         """
         Fetch data from source (used in local mode).
 

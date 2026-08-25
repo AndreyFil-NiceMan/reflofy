@@ -40,12 +40,13 @@ class UppercaseNames(BaseTransformation):
 
         for record in records:
             new_record = record.copy()
+            new_record["data"] = new_record["data"].copy()
 
-            if "first_name" in new_record:
-                new_record["first_name"] = new_record["first_name"].upper()
+            if "first_name" in new_record["data"]:
+                new_record["data"]["first_name"] = new_record["data"]["first_name"].upper()
 
-            if "last_name" in new_record:
-                new_record["last_name"] = new_record["last_name"].upper()
+            if "last_name" in new_record["data"]:
+                new_record["data"]["last_name"] = new_record["data"]["last_name"].upper()
 
             transformed.append(new_record)
 
@@ -59,7 +60,7 @@ class FilterActiveUsers(BaseTransformation):
 
     def apply(self, records: Records, runtime_params: Dict[str, Any]) -> Records:
         """Keep only records where active=True."""
-        return [r for r in records if r.get("active", False)]
+        return [r for r in records if r["data"].get("active", False)]
 
 
 class AddProcessingInfo(BaseTransformation):

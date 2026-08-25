@@ -178,7 +178,7 @@ class TestIDBasedAPISource:
         )
         records = source._fetch_batch([1, 2])
 
-        assert records == [{"id": 1}, {"id": 2}]
+        assert records == [{"data": {"id": 1}}, {"data": {"id": 2}}]
         _, kwargs = mock_client.request.call_args
         assert kwargs["json"] == {"ids": [1, 2]}
 
@@ -201,7 +201,7 @@ class TestIDBasedAPISource:
         )
         records = source._fetch_batch([1])
 
-        assert records == [{"id": 1}]
+        assert records == [{"data": {"id": 1}}]
         _, kwargs = mock_client.request.call_args
         assert kwargs["content"] == "<query><id>1</id></query>"
         assert kwargs.get("json") is None

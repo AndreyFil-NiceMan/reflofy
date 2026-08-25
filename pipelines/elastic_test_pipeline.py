@@ -61,7 +61,7 @@ class FilterByStatus(BaseTransformation):
         """Filter records by status."""
         filter_status = runtime_params.get("filter_status", self.allowed_status)
 
-        filtered = [r for r in records if r.get("status") == filter_status]
+        filtered = [r for r in records if r["data"].get("status") == filter_status]
 
         print(f"  📊 Filtered: {len(records)} → {len(filtered)} records (status={filter_status})")
 
@@ -97,13 +97,13 @@ class FormatEventData(BaseTransformation):
     def apply(self, records, runtime_params):
         """Format event data fields."""
         for record in records:
-            event_type = record.get("event_type", "unknown")
-            user_name = record.get("user_name", "unknown")
-            timestamp = record.get("@timestamp", "unknown")
+            event_type = record["data"].get("event_type", "unknown")
+            user_name = record["data"].get("user_name", "unknown")
+            timestamp = record["data"].get("@timestamp", "unknown")
 
             record["_summary"] = f"{event_type} by {user_name} at {timestamp}"
 
-            event_data = record.get("event_data", {})
+            event_data = record["data"].get("event_data", {})
             if event_type == "purchase" and "amount" in event_data:
                 event_data["formatted_amount"] = f"${event_data['amount']:.2f}"
 

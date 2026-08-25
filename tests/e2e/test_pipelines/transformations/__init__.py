@@ -38,7 +38,7 @@ def transform_enrich_record(records: Records, runtime_params: Dict[str, Any]) ->
     for record in records:
         record["_transform_step_2"] = True
         record["_transform_chain_verified"] = record.get("_transform_step_1", False)
-        record_id = record.get("id", 0)
+        record_id = record["data"].get("id", 0)
         record["_computed_category"] = "even" if record_id % 2 == 0 else "odd"
         record["_destination_type"] = "http"
         record["_test_pipeline"] = "transformation_verify"
@@ -88,7 +88,7 @@ def ctx_runtime_params(records: Records, runtime_params: Dict[str, Any]) -> Reco
     multiplier = int(runtime_params.get("multiplier", 1))
     for record in records:
         record["_env"] = env
-        record["_value"] = record.get("id", 0) * multiplier
+        record["_value"] = record["data"].get("id", 0) * multiplier
     return records
 
 
@@ -106,7 +106,7 @@ def ctx_maybe_fail(records: Records, runtime_params: Dict[str, Any]) -> Records:
     from reflowfy.transformations.base import TransformationError
 
     for record in records:
-        if record.get("id") == 999:
+        if record["data"].get("id") == 999:
             raise TransformationError("ctx_maybe_fail", "Intentional failure for id=999", None)
         record["_step2_done"] = True
     return records
@@ -150,15 +150,15 @@ def elastic_add_metadata_and_route(records: Records, runtime_params: Dict[str, A
     execution_id = runtime_params.get("execution_id", "unknown")
 
     for record in records:
-        user_id = record.get("user_id", 0)
+        user_id = record["data"].get("user_id", 0)
         route_target = "primary" if int(user_id) % 2 == 0 else "secondary"
 
         record["_source_type"] = "elasticsearch"
         record["_test_pipeline"] = "elastic_routed_destinations"
         record["_execution_id"] = execution_id
         record["_page_num"] = int(runtime_params.get("batch_number", 0))
-        record["_event_type"] = record.get("event_type", "unknown")
-        record["_has_amount"] = record.get("amount") is not None
+        record["_event_type"] = record["data"].get("event_type", "unknown")
+        record["_has_amount"] = record["data"].get("amount") is not None
         record["_route_target"] = route_target
 
     return records
@@ -177,7 +177,7 @@ def sql_add_source_info(records: Records, runtime_params: Dict[str, Any]) -> Rec
 def sql_filter_by_status(records: Records, runtime_params: Dict[str, Any]) -> Records:
     """Filters records by status from runtime_params."""
     status_filter = runtime_params.get("filter_status", "active")
-    filtered = [r for r in records if r.get("status") == status_filter]
+    filtered = [r for r in records if r["data"].get("status") == status_filter]
     print(f"  📊 SQL Filter: {len(records)} → {len(filtered)} records (status={status_filter})")
     return filtered
 
@@ -285,7 +285,7 @@ def patch_add_metadata(records: Records, runtime_params: Dict[str, Any]) -> Reco
 @transformation("patch_compute_stats")
 def patch_compute_stats(records: Records, runtime_params: Dict[str, Any]) -> Records:
     """Computes count of active records in the batch."""
-    active_count = sum(1 for r in records if r.get("active", False))
+    active_count = sum(1 for r in records if r["data"].get("active", False))
     for record in records:
         record["_active_in_batch"] = active_count
     return records
@@ -295,9 +295,9 @@ def patch_compute_stats(records: Records, runtime_params: Dict[str, Any]) -> Rec
 def per_id_verify_enrichment(records: Records, runtime_params: Dict[str, Any]) -> Records:
     """Verifies that every record has the enrichment sub-object."""
     for record in records:
-        if "enrichment" not in record:
+        if "enrichment" not in record["data"]:
             record["_enrichment_missing"] = True
-        record["_enrichment_verified"] = "enrichment" in record
+        record["_enrichment_verified"] = "enrichment" in record["data"]
     return records
 
 
@@ -306,7 +306,7 @@ def products_tag_category(records: Records, runtime_params: Dict[str, Any]) -> R
     """Adds a category label for easy downstream filtering."""
     LABELS = {"A": "premium", "B": "standard", "C": "economy"}
     for record in records:
-        cat = record.get("category", "")
+        cat = record["data"].get("category", "")
         record["_category_label"] = LABELS.get(cat, "unknown")
     return records
 
@@ -315,7 +315,7 @@ def products_tag_category(records: Records, runtime_params: Dict[str, Any]) -> R
 def products_add_tax(records: Records, runtime_params: Dict[str, Any]) -> Records:
     """Adds a 10% tax field to each product record."""
     for record in records:
-        price = record.get("price", 0.0)
+        price = record["data"].get("price", 0.0)
         record["price_with_tax"] = round(price * 1.10, 2)
     return records
 
@@ -337,8 +337,10 @@ def api_batch_filter_active(records: Records, runtime_params: Dict[str, Any]) ->
     """Keeps only active users and adds a computed display_name field."""
     result: Records = []
     for record in records:
-        if record.get("active", True):
-            record["display_name"] = f"{record.get('name', '')} <{record.get('email', '')}>"
+        if record["data"].get("active", True):
+            record["display_name"] = (
+                f"{record['data'].get('name', '')} <{record['data'].get('email', '')}>"
+            )
             result.append(record)
     return result
 

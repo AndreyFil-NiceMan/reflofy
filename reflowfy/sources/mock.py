@@ -1,6 +1,7 @@
 """Mock data source for testing without external dependencies."""
 
 from typing import Any, Dict, Iterator, List, Optional
+from reflowfy.core.types import Records, wrap_as_record
 from reflowfy.sources.base import BaseSource, SourceJob
 
 
@@ -29,7 +30,7 @@ class MockSource(BaseSource):
         }
         super().__init__(config)
 
-    def fetch(self, runtime_params: Dict[str, Any], limit: Optional[int] = None) -> List[Any]:
+    def fetch(self, runtime_params: Dict[str, Any], limit: Optional[int] = None) -> Records:
         """
         Fetch data from mock source.
 
@@ -43,9 +44,9 @@ class MockSource(BaseSource):
         data = self.config["data"]
 
         if limit:
-            return data[:limit]
+            data = data[:limit]
 
-        return data
+        return [wrap_as_record(item) for item in data]
 
     def split_jobs(
         self, runtime_params: Dict[str, Any], batch_size: int = 1000
@@ -64,7 +65,7 @@ class MockSource(BaseSource):
         batch_size = self.config.get("batch_size", batch_size)
 
         for i in range(0, len(data), batch_size):
-            batch = data[i : i + batch_size]
+            batch = [wrap_as_record(item) for item in data[i : i + batch_size]]
 
             yield SourceJob(
                 records=batch,

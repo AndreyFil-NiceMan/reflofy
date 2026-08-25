@@ -7,6 +7,7 @@
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, cast
 import boto3
 from botocore.exceptions import ClientError
+from reflowfy.core.types import Records, wrap_as_record
 from reflowfy.sources.base import BaseSource, SourceJob, SourceError
 
 if TYPE_CHECKING:
@@ -127,7 +128,7 @@ class S3Source(BaseSource):
         except ClientError as e:
             raise SourceError("s3", f"Failed to read object {key}: {e}", e)
 
-    def fetch(self, runtime_params: Dict[str, Any], limit: Optional[int] = None) -> List[Any]:
+    def fetch(self, runtime_params: Dict[str, Any], limit: Optional[int] = None) -> Records:
         """
         Fetch data from S3 (local mode).
 
@@ -144,15 +145,16 @@ class S3Source(BaseSource):
 
         explicit_keys = resolved_config.get("keys")
         if explicit_keys:
-            records: List[Any] = []
+            records: Records = []
             for key in explicit_keys:
                 if resolved_config["read_content"]:
                     content = self._read_object_content(key)
-                    records.extend(
-                        cast(List[Any], content) if isinstance(content, list) else [content]
-                    )
+                    if isinstance(content, list):
+                        records.extend(wrap_as_record(item) for item in cast(List[Any], content))
+                    else:
+                        records.append(wrap_as_record(content))
                 else:
-                    records.append({"key": key})
+                    records.append(wrap_as_record({"key": key}))
                 if limit and len(records) >= limit:
                     return records[:limit]
             return records
@@ -163,7 +165,7 @@ class S3Source(BaseSource):
         prefix = resolved_config["prefix"]
         read_content = resolved_config["read_content"]
 
-        records = []
+        records: Records = []
 
         try:
             paginator = client.get_paginator("list_objects_v2")
@@ -181,17 +183,21 @@ class S3Source(BaseSource):
                     if read_content:
                         content = self._read_object_content(obj["Key"])
                         if isinstance(content, list):
-                            records.extend(cast(List[Any], content))
+                            records.extend(
+                                wrap_as_record(item) for item in cast(List[Any], content)
+                            )
                         else:
-                            records.append(content)
+                            records.append(wrap_as_record(content))
                     else:
                         records.append(
-                            {
-                                "key": obj["Key"],
-                                "size": obj["Size"],
-                                "last_modified": obj["LastModified"].isoformat(),
-                                "etag": obj["ETag"],
-                            }
+                            wrap_as_record(
+                                {
+                                    "key": obj["Key"],
+                                    "size": obj["Size"],
+                                    "last_modified": obj["LastModified"].isoformat(),
+                                    "etag": obj["ETag"],
+                                }
+                            )
                         )
 
                     if limit and len(records) >= limit:
@@ -247,22 +253,26 @@ class S3Source(BaseSource):
                     continue
 
                 # Build records
-                records: List[Any] = []
+                records: Records = []
                 for obj in filtered_objects:
                     if read_content:
                         content = self._read_object_content(obj["Key"])
                         if isinstance(content, list):
-                            records.extend(cast(List[Any], content))
+                            records.extend(
+                                wrap_as_record(item) for item in cast(List[Any], content)
+                            )
                         else:
-                            records.append(content)
+                            records.append(wrap_as_record(content))
                     else:
                         records.append(
-                            {
-                                "key": obj["Key"],
-                                "size": obj["Size"],
-                                "last_modified": obj["LastModified"].isoformat(),
-                                "etag": obj["ETag"],
-                            }
+                            wrap_as_record(
+                                {
+                                    "key": obj["Key"],
+                                    "size": obj["Size"],
+                                    "last_modified": obj["LastModified"].isoformat(),
+                                    "etag": obj["ETag"],
+                                }
+                            )
                         )
 
                 yield SourceJob(

@@ -1,9 +1,10 @@
 """SQL database source connector."""
 
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Dict, Iterator, Optional
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
+from reflowfy.core.types import Records, wrap_as_record
 from reflowfy.sources.base import BaseSource, SourceJob, SourceError
 
 
@@ -58,7 +59,7 @@ class SqlSource(BaseSource):
             )
         return self._engine
 
-    def fetch(self, runtime_params: Dict[str, Any], limit: Optional[int] = None) -> List[Any]:
+    def fetch(self, runtime_params: Dict[str, Any], limit: Optional[int] = None) -> Records:
         """
         Fetch data from SQL database (local mode).
 
@@ -83,7 +84,10 @@ class SqlSource(BaseSource):
 
             with engine.connect() as conn:
                 result = conn.execute(text(query))
-                return [dict(row._mapping) for row in result]  # pyright: ignore[reportPrivateUsage]
+                return [
+                    wrap_as_record(dict(row._mapping))  # pyright: ignore[reportPrivateUsage]
+                    for row in result
+                ]
 
         except SQLAlchemyError as e:
             raise SourceError("sql", f"Failed to fetch data: {e}", e)
@@ -205,7 +209,10 @@ class SqlSource(BaseSource):
                 """
 
                 result = conn.execute(text(range_query))
-                records = [dict(row._mapping) for row in result]  # pyright: ignore[reportPrivateUsage]
+                records = [
+                    wrap_as_record(dict(row._mapping))  # pyright: ignore[reportPrivateUsage]
+                    for row in result
+                ]
 
                 if records:
                     yield SourceJob(
@@ -233,7 +240,10 @@ class SqlSource(BaseSource):
                 paginated_query = f"{base_query} LIMIT {batch_size} OFFSET {offset}"
 
                 result = conn.execute(text(paginated_query))
-                records = [dict(row._mapping) for row in result]  # pyright: ignore[reportPrivateUsage]
+                records = [
+                    wrap_as_record(dict(row._mapping))  # pyright: ignore[reportPrivateUsage]
+                    for row in result
+                ]
 
                 if not records:
                     break
