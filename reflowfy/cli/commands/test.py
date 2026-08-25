@@ -70,6 +70,7 @@ class BatchReport:
     applied: List[AppliedStep] = field(default_factory=lambda: [])
     error: Optional[BaseException] = None
     sent: bool = False
+    sent_count: int = 0
 
     @property
     def ok(self) -> bool:
@@ -81,6 +82,7 @@ class BatchReport:
             "records_fetched": self.fetched,
             "records_out": len(self.transformed),
             "sent": self.sent,
+            "sent_count": self.sent_count,
             "steps": [
                 {
                     "name": s.name,
@@ -284,14 +286,53 @@ def render_params(params: Dict[str, Any], opts: TestOptions, indent: str = "") -
 # ---------------------------------------------------------------------------
 
 
+def _send_job(
+    destination: Any,
+    records: List[Any],
+    job_params: Dict[str, Any],
+    opts: TestOptions,
+    report: BatchReport,
+    indent: str = "",
+) -> None:
+    """Send one job's records to its own resolved destination.
+
+    Mirrors the worker (``reflowfy/worker/executor.py``): each job's
+    destination — already resolved by ``run_job_records`` against that job's
+    transformed records — health-checks and sends independently. Any failure
+    is recorded on the report; the caller decides whether to keep going.
+    """
+    try:
+        console.print(
+            f"{indent}[bold]📤 Destination:[/bold] {summarize(destination, opts.verbose)}"
+        )
+
+        async def _send() -> None:
+            if not await destination.health_check():
+                raise PipelineError("destination health check failed")
+            await destination.send_with_retry(records, job_params)
+
+        asyncio.run(_send())
+        report.sent = True
+        report.sent_count += 1
+        console.print(f"{indent}[green]✓ Sent {len(records)} records[/green]")
+    except Exception as exc:  # noqa: BLE001 — reported, not swallowed
+        report.error = exc
+
+
 def run_batch(
     pipeline: "AbstractPipeline[Any]",
     source: Any,
     flat_params: Dict[str, Any],
     opts: TestOptions,
     label: Optional[str] = None,
+    indent: str = "",
 ) -> BatchReport:
-    """Fetch + transform one batch through the shared worker core.
+    """Fetch + transform + send each job through the shared worker core.
+
+    Sends per job — matching production, where each job resolves and sends
+    its own destination — rather than merging every job's records into one
+    request. A pipeline with ``docs_per_job=1`` splitting into 30 jobs makes
+    30 destination sends here, the same as it would over Kafka.
 
     Never raises: the failure is captured on the report so the caller decides
     whether to stop or carry on to the next batch.
@@ -302,12 +343,18 @@ def run_batch(
             remaining = opts.limit - report.fetched
             if remaining <= 0:
                 break
-            records, transformed, applied, _destination = run_job_records(
-                sub, pipeline, job_runtime_params(sub, flat_params), limit=remaining
+            job_params = job_runtime_params(sub, flat_params)
+            records, transformed, applied, destination = run_job_records(
+                sub, pipeline, job_params, limit=remaining
             )
             report.fetched += len(records)
             report.transformed.extend(transformed)
             report.applied.extend(applied)
+
+            if transformed and not opts.dry_run:
+                _send_job(destination, transformed, job_params, opts, report, indent)
+                if not report.ok:
+                    break
     except Exception as exc:  # noqa: BLE001 — reported, not swallowed
         report.error = exc
         # A failure mid-chain still knows what ran before it; recover that so the
@@ -321,29 +368,6 @@ def run_batch(
                 elif exc.records_in:
                     report.fetched = exc.records_in
     return report
-
-
-def send_batch(
-    pipeline: "AbstractPipeline[Any]",
-    report: BatchReport,
-    flat_params: Dict[str, Any],
-    opts: TestOptions,
-) -> None:
-    """Resolve the destination and send, recording any failure on the report."""
-    try:
-        destination = pipeline.define_destination(report.transformed, flat_params)
-        console.print(f"\n[bold]📤 Destination:[/bold] {summarize(destination, opts.verbose)}")
-
-        async def _send() -> None:
-            if not await destination.health_check():
-                raise PipelineError("destination health check failed")
-            await destination.send_with_retry(report.transformed, flat_params)
-
-        asyncio.run(_send())
-        report.sent = True
-        console.print(f"[green]✓ Sent {len(report.transformed)} records[/green]")
-    except Exception as exc:  # noqa: BLE001 — reported, not swallowed
-        report.error = exc
 
 
 def report_batch(report: BatchReport, opts: TestOptions, indent: str = "") -> None:
@@ -729,11 +753,6 @@ def run_single(
 
     report = run_batch(pipeline, source, flat, opts)
     report_batch(report, opts)
-
-    if report.ok and report.transformed and not opts.dry_run:
-        send_batch(pipeline, report, flat, opts)
-        if not report.ok:
-            render_failure(report.error, opts)  # type: ignore[arg-type]
     return report
 
 
@@ -778,14 +797,9 @@ def run_id_batches(
         console.print(f"  [bold]🔌 Source:[/bold] {summarize(source, opts.verbose)}")
         render_params(flat, opts, indent="  ")
 
-        report = run_batch(pipeline, source, flat, opts, label=label)
+        report = run_batch(pipeline, source, flat, opts, label=label, indent="  ")
         reports.append(report)
         report_batch(report, opts, indent="  ")
-
-        if report.ok and report.transformed and not opts.dry_run:
-            send_batch(pipeline, report, flat, opts)
-            if not report.ok:
-                render_failure(report.error, opts, indent="  ")  # type: ignore[arg-type]
 
         if not report.ok and opts.fail_fast:
             console.print("  [dim]stopping — --fail-fast is set[/dim]")
