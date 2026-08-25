@@ -41,7 +41,9 @@ class Execution(Base):
     runtime_params: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
 
     # Relationship to jobs
-    jobs: Mapped[List["Job"]] = relationship("Job", back_populates="execution", cascade="all, delete-orphan")
+    jobs: Mapped[List["Job"]] = relationship(
+        "Job", back_populates="execution", cascade="all, delete-orphan"
+    )
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary representation."""
@@ -270,19 +272,24 @@ class ProcessedContent(Base):
 
 class PipelineSchedule(Base):
     """
-    Persistent cron schedule state for a scheduled pipeline.
+    Persistent cron schedule state for one named schedule of a pipeline.
 
-    One row per pipeline. The scheduler reads next_run_at on every poll
-    and fires an execution when it has elapsed.
+    A pipeline may declare several named schedules (different cron + params);
+    each gets its own row, keyed by (pipeline_name, schedule_name). The
+    scheduler reads next_run_at on every poll and fires an execution with
+    that row's runtime_params when it has elapsed.
 
     Manual triggers (POST /run) update last_triggered_at and recalculate
-    next_run_at to prevent overlapping executions.
+    next_run_at for every schedule of that pipeline, to prevent overlapping
+    executions.
     """
 
     __tablename__ = "pipeline_schedules"
 
     pipeline_name: Mapped[str] = mapped_column(String(255), primary_key=True)
+    schedule_name: Mapped[str] = mapped_column(String(255), primary_key=True)
     cron_expression: Mapped[str] = mapped_column(String(255), nullable=False)
+    runtime_params: Mapped[Dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     next_run_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     last_triggered_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     last_execution_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
@@ -304,9 +311,13 @@ class PipelineSchedule(Base):
         """Convert to dictionary representation."""
         return {
             "pipeline_name": self.pipeline_name,
+            "schedule_name": self.schedule_name,
             "cron_expression": self.cron_expression,
+            "runtime_params": self.runtime_params,
             "next_run_at": self.next_run_at.isoformat() if self.next_run_at else None,
-            "last_triggered_at": self.last_triggered_at.isoformat() if self.last_triggered_at else None,
+            "last_triggered_at": (
+                self.last_triggered_at.isoformat() if self.last_triggered_at else None
+            ),
             "last_execution_id": self.last_execution_id,
             "enabled": self.enabled == "true",
             "created_at": self.created_at.isoformat() if self.created_at else None,

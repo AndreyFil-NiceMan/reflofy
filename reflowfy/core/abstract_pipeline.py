@@ -31,11 +31,12 @@ import re
 import typing
 import warnings
 from abc import ABCMeta, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import (
     TYPE_CHECKING,
     Annotated,
     Any,
+    ClassVar,
     Dict,
     Generic,
     Iterable,
@@ -64,6 +65,49 @@ if TYPE_CHECKING:
     from reflowfy.transformations.base import BaseTransformation
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ScheduledRun:
+    """One named cron trigger for a pipeline, with its own runtime params.
+
+    Example:
+        >>> schedules = [
+        ...     ScheduledRun(name="morning", cron="0 9 * * *", params={"mode": "fast"}),
+        ...     ScheduledRun(name="evening", cron="0 17 * * *", params={"mode": "full"}),
+        ... ]
+    """
+
+    name: str
+    cron: str
+    params: Dict[str, Any] = field(default_factory=lambda: cast(Dict[str, Any], {}))
+
+
+def _validate_schedules(schedules: List["ScheduledRun"], pipeline_name: str) -> None:
+    """Validate a pipeline's schedules: unique names, valid 5-field cron per entry."""
+    if not schedules:
+        return
+
+    seen_names: Set[str] = set()
+    for run in schedules:
+        if run.name in seen_names:
+            raise ValueError(
+                f"Pipeline '{pipeline_name}' has duplicate schedule name '{run.name}' — "
+                f"schedule names must be unique per pipeline."
+            )
+        seen_names.add(run.name)
+
+        try:
+            from croniter import croniter as _croniter
+
+            if not _croniter.is_valid(run.cron):
+                raise ValueError(
+                    f"Pipeline '{pipeline_name}' schedule '{run.name}' has invalid cron "
+                    f"expression: '{run.cron}'. "
+                    f"(reflowfy uses 5-field cron: minute hour day month weekday)"
+                )
+        except ImportError:
+            pass  # croniter not installed; validated at runtime by scheduler
 
 
 class PipelineMeta(ABCMeta):
@@ -98,20 +142,8 @@ class PipelineMeta(ABCMeta):
                     cls._params_type = params_type  # type: ignore[attr-defined]
                     break
 
-            # Validate cron expression at class-definition time (before instantiation)
-            schedule = namespace.get("schedule")
-            if schedule is not None:
-                try:
-                    from croniter import croniter as _croniter
-
-                    if not _croniter.is_valid(schedule):
-                        raise ValueError(
-                            f"Pipeline '{namespace.get('name', name)}' has invalid cron "
-                            f"expression: '{schedule}'. "
-                            f"(reflowfy uses 5-field cron: minute hour day month weekday)"
-                        )
-                except ImportError:
-                    pass  # croniter not installed; validated at runtime by scheduler
+            # Validate schedules at class-definition time (before instantiation)
+            _validate_schedules(namespace.get("schedules") or [], namespace.get("name", name))
 
             # Check if this is a concrete pipeline with a name
             if "name" in namespace and namespace["name"]:
@@ -463,9 +495,10 @@ class AbstractPipeline(QueryLoaderMixin, Generic[P], metaclass=PipelineMeta):
     # None means the pipeline didn't declare one.
     _params_type: Optional[type] = None
 
-    # Optional cron schedule for automatic execution (e.g. "*/5 * * * *").
-    # None means the pipeline is never auto-scheduled.
-    schedule: Optional[str] = None
+    # Named cron schedules for automatic execution, each with its own params
+    # (e.g. [ScheduledRun(name="morning", cron="0 9 * * *", params={"mode": "fast"})]).
+    # Empty means the pipeline is never auto-scheduled.
+    schedules: ClassVar[List[ScheduledRun]] = []
 
     def __init__(
         self,
@@ -499,17 +532,9 @@ class AbstractPipeline(QueryLoaderMixin, Generic[P], metaclass=PipelineMeta):
                 "characters, underscores, or hyphens"
             )
 
-        # Validate cron expression if schedule is set
-        if self.schedule is not None:
-            try:
-                from croniter import croniter as _croniter
-
-                if not _croniter.is_valid(self.schedule):
-                    raise ValueError(
-                        f"Pipeline '{self.name}' has invalid cron expression: '{self.schedule}'"
-                    )
-            except ImportError:
-                pass  # croniter not installed; validated at runtime by scheduler
+        # Validate schedules (belt-and-suspenders: covers a subclass that sets
+        # `schedules` dynamically rather than in the class namespace).
+        _validate_schedules(self.schedules, self.name)
 
     def define_source(self, runtime_params: P) -> "BaseSource | List[Any]":
         """
@@ -858,8 +883,8 @@ class AbstractPipeline(QueryLoaderMixin, Generic[P], metaclass=PipelineMeta):
 
     @property
     def is_scheduled(self) -> bool:
-        """Return True if this pipeline has a cron schedule configured."""
-        return self.schedule is not None
+        """Return True if this pipeline has any cron schedules configured."""
+        return bool(self.schedules)
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize pipeline metadata for API responses."""
@@ -870,7 +895,9 @@ class AbstractPipeline(QueryLoaderMixin, Generic[P], metaclass=PipelineMeta):
             "config": self.config,
             "transformations": self.get_transformation_names(),
             "enable_duplicate_jobs": self.enable_duplicate_jobs,
-            "schedule": self.schedule,
+            "schedules": [
+                {"name": r.name, "cron": r.cron, "params": r.params} for r in self.schedules
+            ],
             "is_scheduled": self.is_scheduled,
         }
 

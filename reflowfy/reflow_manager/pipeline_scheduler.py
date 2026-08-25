@@ -9,7 +9,7 @@ import os
 import threading
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Callable, Optional, Set
+from typing import Any, Callable, Dict, Optional, Set, Tuple
 
 from croniter import croniter
 from sqlalchemy.orm import Session
@@ -122,12 +122,19 @@ class PipelineScheduler:
         pipeline is still in flight.
         """
         pipeline_name = schedule.pipeline_name
-        execution_id = f"sched-{uuid.uuid4().hex[:12]}"
+        schedule_name = schedule.schedule_name
+        runtime_params = schedule.runtime_params
+        execution_id = f"sched-{schedule_name}-{uuid.uuid4().hex[:8]}"
 
-        log_ctx = {"execution_id": execution_id, "pipeline_name": pipeline_name}
+        log_ctx = {
+            "execution_id": execution_id,
+            "pipeline_name": pipeline_name,
+            "schedule_name": schedule_name,
+        }
         logger.info(
-            "Triggering scheduled pipeline: %s (execution=%s)",
+            "Triggering scheduled pipeline: %s/%s (execution=%s)",
             pipeline_name,
+            schedule_name,
             execution_id,
             extra=log_ctx,
         )
@@ -136,8 +143,8 @@ class PipelineScheduler:
             if not self.pipeline_runner_factory:
                 raise RuntimeError("Pipeline runner factory not configured")
 
-            self._create_execution(pipeline_name, execution_id)
-            self._dispatch_async(pipeline_name, execution_id)
+            self._create_execution(pipeline_name, execution_id, runtime_params)
+            self._dispatch_async(pipeline_name, execution_id, runtime_params)
 
             schedule.last_execution_id = execution_id
             logger.info(
@@ -159,7 +166,9 @@ class PipelineScheduler:
             schedule.next_run_at = self._compute_next_run(schedule.cron_expression, now)
             db.flush()
 
-    def _create_execution(self, pipeline_name: str, execution_id: str) -> None:
+    def _create_execution(
+        self, pipeline_name: str, execution_id: str, runtime_params: Dict[str, Any]
+    ) -> None:
         """Create the execution record synchronously, in its own session."""
         factory = self.pipeline_runner_factory
         if factory is None:
@@ -169,13 +178,15 @@ class PipelineScheduler:
             runner.execution_manager.create_execution(
                 execution_id=execution_id,
                 pipeline_name=pipeline_name,
-                runtime_params={},
+                runtime_params=runtime_params,
             )
             runner.execution_manager.db.commit()
         finally:
             runner.execution_manager.db.close()
 
-    def _dispatch_async(self, pipeline_name: str, execution_id: str) -> None:
+    def _dispatch_async(
+        self, pipeline_name: str, execution_id: str, runtime_params: Dict[str, Any]
+    ) -> None:
         """Run the pipeline's jobs on a background daemon thread.
 
         Mirrors the API's background dispatch: a fresh runner (own DB session)
@@ -191,7 +202,7 @@ class PipelineScheduler:
                 runner.run_pipeline_jobs(
                     execution_id=execution_id,
                     pipeline_name=pipeline_name,
-                    runtime_params={},
+                    runtime_params=runtime_params,
                 )
             except Exception as e:
                 logger.error(
@@ -225,80 +236,102 @@ class PipelineScheduler:
         Upsert pipeline_schedules rows from the current pipeline registry.
 
         Called once on startup after pipelines are loaded. Ensures the DB
-        reflects the current set of scheduled pipelines:
-        - New scheduled pipelines → INSERT with next_run_at calculated from now
+        reflects the current set of named schedules across all pipelines:
+        - New (pipeline, schedule name) → INSERT with next_run_at from now
         - Changed cron expression → UPDATE expression, recalculate next_run_at
-        - Unchanged cron expression → leave next_run_at as-is (preserves timer)
-        - Pipeline no longer scheduled → soft-disable (enabled = 'false')
+        - Changed params (cron unchanged) → UPDATE params, leave next_run_at
+        - Unchanged → leave next_run_at as-is (preserves timer)
+        - (pipeline, schedule name) no longer declared → soft-disable
         """
         from reflowfy.core.registry import pipeline_registry
 
         now = datetime.now(timezone.utc).replace(tzinfo=None)
         all_pipelines = pipeline_registry.list_all()
-        scheduled_names: Set[str] = set()
+        scheduled_keys: Set[Tuple[str, str]] = set()
 
         for pipeline in all_pipelines:
-            if not getattr(pipeline, "is_scheduled", False):
-                continue
+            for run in getattr(pipeline, "schedules", []):
+                scheduled_keys.add((pipeline.name, run.name))
 
-            scheduled_names.add(pipeline.name)
-            expr = pipeline.schedule
-            assert expr is not None  # guaranteed by is_scheduled guard above
-
-            existing = (
-                db.query(PipelineSchedule)
-                .filter(PipelineSchedule.pipeline_name == pipeline.name)
-                .first()
-            )
-
-            if existing is None:
-                row = PipelineSchedule(
-                    pipeline_name=pipeline.name,
-                    cron_expression=expr,
-                    next_run_at=self._compute_next_run(expr, now),
-                    enabled="true",
+                existing = (
+                    db.query(PipelineSchedule)
+                    .filter(
+                        PipelineSchedule.pipeline_name == pipeline.name,
+                        PipelineSchedule.schedule_name == run.name,
+                    )
+                    .first()
                 )
-                db.add(row)
-                logger.info("Registered schedule for '%s' (%s)", pipeline.name, expr)
 
-            else:
-                # Re-enable if it was previously disabled
-                existing.enabled = "true"
+                if existing is None:
+                    row = PipelineSchedule(
+                        pipeline_name=pipeline.name,
+                        schedule_name=run.name,
+                        cron_expression=run.cron,
+                        runtime_params=run.params,
+                        next_run_at=self._compute_next_run(run.cron, now),
+                        enabled="true",
+                    )
+                    db.add(row)
+                    logger.info(
+                        "Registered schedule '%s' for '%s' (%s)",
+                        run.name,
+                        pipeline.name,
+                        run.cron,
+                    )
 
-                if existing.cron_expression != expr:
-                    # Cron expression changed — recalculate next fire time
-                    existing.cron_expression = expr
-                    existing.next_run_at = self._compute_next_run(expr, now)
-                    logger.info("Updated schedule for '%s' (%s)", pipeline.name, expr)
-                # Else: leave next_run_at unchanged (mid-interval restart case)
+                else:
+                    # Re-enable if it was previously disabled
+                    existing.enabled = "true"
 
-        # Soft-disable schedules for pipelines that no longer have schedule set
+                    if existing.cron_expression != run.cron:
+                        # Cron expression changed — recalculate next fire time
+                        existing.cron_expression = run.cron
+                        existing.next_run_at = self._compute_next_run(run.cron, now)
+                        logger.info(
+                            "Updated schedule '%s' for '%s' (%s)",
+                            run.name,
+                            pipeline.name,
+                            run.cron,
+                        )
+                    # Else: leave next_run_at unchanged (mid-interval restart case)
+
+                    if existing.runtime_params != run.params:
+                        existing.runtime_params = run.params
+
+        # Soft-disable schedules that are no longer declared by any pipeline
         all_schedule_rows = (
             db.query(PipelineSchedule).filter(PipelineSchedule.enabled == "true").all()
         )
 
         for row in all_schedule_rows:
-            if row.pipeline_name not in scheduled_names:
+            if (row.pipeline_name, row.schedule_name) not in scheduled_keys:
                 row.enabled = "false"
                 logger.info(
-                    "Disabled schedule for '%s' (no longer scheduled)", row.pipeline_name
+                    "Disabled schedule '%s' for '%s' (no longer scheduled)",
+                    row.schedule_name,
+                    row.pipeline_name,
                 )
 
     def reset_schedule(self, db: Session, pipeline_name: str, triggered_at: datetime) -> None:
         """
         Recalculate next_run_at from triggered_at after a manual trigger.
 
-        Prevents the scheduler from immediately re-running a pipeline that
-        was just triggered manually via the API.
+        A manual trigger isn't tied to one particular named schedule, so this
+        pushes out every schedule belonging to the pipeline — preventing the
+        scheduler from immediately re-running any of them right after a
+        manual run via the API.
         The caller is responsible for committing the session.
         """
-        schedule = (
+        schedules = (
             db.query(PipelineSchedule)
-            .filter(PipelineSchedule.pipeline_name == pipeline_name)
-            .first()
+            .filter(
+                PipelineSchedule.pipeline_name == pipeline_name,
+                PipelineSchedule.enabled == "true",
+            )
+            .all()
         )
 
-        if schedule and schedule.enabled == "true":
+        for schedule in schedules:
             schedule.last_triggered_at = triggered_at
             schedule.next_run_at = self._compute_next_run(schedule.cron_expression, triggered_at)
 

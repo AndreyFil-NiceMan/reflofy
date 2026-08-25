@@ -67,7 +67,9 @@ def _factory(rec: _Recorder):
 class _FakeSchedule:
     def __init__(self):
         self.pipeline_name = "p"
+        self.schedule_name = "default"
         self.cron_expression = "*/5 * * * *"
+        self.runtime_params = {}
         self.last_execution_id = None
         self.last_triggered_at = None
         self.next_run_at = None

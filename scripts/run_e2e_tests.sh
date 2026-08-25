@@ -271,8 +271,13 @@ if [ "$SKIP_DOCKER" = false ] && command -v docker &> /dev/null; then
     fi
 fi
 
-# Clean dist
+# Clean dist. Also clean setuptools' build/ staging dir: `python -m build`
+# reuses it across invocations, and build_py skips re-copying a source file
+# whose staged copy has an equal/newer mtime — so a build/ left over from an
+# earlier invocation (manual or a prior run of this script) can silently ship
+# stale source into the wheel this run installs, with dist/ looking clean.
 rm -rf "$DIST_DIR"
+rm -rf "$PROJECT_ROOT/build"
 rm -rf "$WORKSPACE"
 
 # Build package

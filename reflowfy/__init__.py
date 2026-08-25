@@ -9,7 +9,7 @@ This framework enables users to define pipelines that:
 It is Kafka-based, Kubernetes-native, and order-independent for maximum parallelism.
 """
 
-from reflowfy.core.abstract_pipeline import AbstractPipeline, PipelineParameter
+from reflowfy.core.abstract_pipeline import AbstractPipeline, PipelineParameter, ScheduledRun
 from reflowfy.core.exceptions import PipelineError, SkipJob
 from reflowfy.core.id_based_pipeline import IdBasedPipeline
 from reflowfy.core.types import Record, Records, Transformations
@@ -42,6 +42,8 @@ __all__ = [
     "AbstractPipeline",
     "IdBasedPipeline",
     "PipelineParameter",
+    # Declaring `schedules = [ScheduledRun(...), ...]` on a pipeline.
+    "ScheduledRun",
     # Typed runtime_params: subclass RuntimeParams, pass it as
     # AbstractPipeline[MyParams], annotate defaults with Param.
     "RuntimeParams",
