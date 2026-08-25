@@ -21,6 +21,7 @@ TIMEOUT = 30.0
 SCHEDULED_PIPELINE = "e2e_scheduled_test"
 SLOW_SCHEDULED_PIPELINE = "e2e_scheduled_slow_test"
 NO_DUPLICATES_SCHEDULED_PIPELINE = "e2e_scheduled_no_duplicates_test"
+MULTI_SCHEDULE_PIPELINE = "e2e_multi_schedule_test"
 
 
 # ---------------------------------------------------------------------------
@@ -35,6 +36,12 @@ def _get_schedule(client: httpx.Client, pipeline_name: str) -> dict | None:
         if entry["pipeline_name"] == pipeline_name:
             return entry
     return None
+
+
+def _get_all_schedules(client: httpx.Client, pipeline_name: str) -> list[dict]:
+    resp = client.get("/schedules")
+    resp.raise_for_status()
+    return [e for e in resp.json()["schedules"] if e["pipeline_name"] == pipeline_name]
 
 
 def _wait_for_execution(client: httpx.Client, execution_id: str, max_wait: int = 60) -> dict:
@@ -82,7 +89,9 @@ class TestScheduleListEndpoint:
         assert entry is not None
         for field in (
             "pipeline_name",
+            "schedule_name",
             "cron_expression",
+            "runtime_params",
             "next_run_at",
             "enabled",
             "created_at",
@@ -265,15 +274,16 @@ class TestScheduleIdempotency:
 
     def test_multiple_schedule_syncs_do_not_duplicate_rows(self, reflow_client):
         """
-        /schedules should return exactly one row per pipeline, not duplicates,
-        regardless of how many times startup sync runs.
+        /schedules should return exactly one row per (pipeline, schedule name),
+        not duplicates, regardless of how many times startup sync runs. A
+        pipeline may legitimately have several named schedules, so uniqueness
+        is on the composite key, not on pipeline_name alone.
         """
         resp = reflow_client.get("/schedules")
         schedules = resp.json()["schedules"]
-        names = [s["pipeline_name"] for s in schedules]
-        # No duplicates
-        assert len(names) == len(set(names)), (
-            f"Duplicate schedule rows detected: {names}"
+        keys = [(s["pipeline_name"], s["schedule_name"]) for s in schedules]
+        assert len(keys) == len(set(keys)), (
+            f"Duplicate schedule rows detected: {keys}"
         )
 
     def test_schedule_row_stable_between_requests(self, reflow_client):
@@ -405,3 +415,34 @@ class TestScheduledPipelineNoDuplicateJobs:
         assert stats2.get("total_jobs", 0) > 0, (
             "jobs are always created now; dedup is a worker outcome"
         )
+
+
+class TestMultiSchedulePipeline:
+    """
+    Verify a pipeline that declares several named schedules gets one DB row
+    per schedule, each carrying its own cron expression and runtime params.
+    """
+
+    def test_both_named_schedules_are_registered(self, reflow_client):
+        entries = _get_all_schedules(reflow_client, MULTI_SCHEDULE_PIPELINE)
+        names = {e["schedule_name"] for e in entries}
+        assert names == {"morning", "evening"}, (
+            f"expected both named schedules registered, got: {names}"
+        )
+
+    def test_each_schedule_keeps_its_own_cron_and_params(self, reflow_client):
+        entries = {e["schedule_name"]: e for e in _get_all_schedules(reflow_client, MULTI_SCHEDULE_PIPELINE)}
+
+        assert entries["morning"]["cron_expression"] == "0 9 1 1 *"
+        assert entries["morning"]["runtime_params"] == {"mode": "fast"}
+
+        assert entries["evening"]["cron_expression"] == "0 17 2 1 *"
+        assert entries["evening"]["runtime_params"] == {"mode": "full"}
+
+    def test_get_schedule_endpoint_lists_all_named_schedules(self, reflow_client):
+        resp = reflow_client.get(f"/schedules/{MULTI_SCHEDULE_PIPELINE}")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["pipeline_name"] == MULTI_SCHEDULE_PIPELINE
+        names = {s["schedule_name"] for s in data["schedules"]}
+        assert names == {"morning", "evening"}

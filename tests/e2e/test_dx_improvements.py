@@ -174,14 +174,14 @@ class TestCronValidation:
     @pytest.mark.dx
     def test_invalid_cron_raises_at_definition(self):
         """Defining a pipeline with a bad cron expression raises ValueError immediately."""
-        from reflowfy.core.abstract_pipeline import AbstractPipeline
+        from reflowfy.core.abstract_pipeline import AbstractPipeline, ScheduledRun
         from reflowfy.sources.mock import MockSource
         from reflowfy.destinations.console import ConsoleDestination
 
         with pytest.raises(ValueError, match="invalid cron"):
             class BadCronPipeline(AbstractPipeline):
                 name = "bad_cron_test_pipeline_dx"
-                schedule = "not-a-cron"
+                schedules = [ScheduledRun(name="default", cron="not-a-cron")]
 
                 def define_source(self, runtime_params):
                     return MockSource(data=[])
@@ -195,14 +195,14 @@ class TestCronValidation:
     @pytest.mark.dx
     def test_valid_cron_does_not_raise(self):
         """A valid 5-field cron expression does not raise."""
-        from reflowfy.core.abstract_pipeline import AbstractPipeline
+        from reflowfy.core.abstract_pipeline import AbstractPipeline, ScheduledRun
         from reflowfy.sources.mock import MockSource
         from reflowfy.destinations.console import ConsoleDestination
         from reflowfy.core.registry import pipeline_registry
 
         class GoodCronPipeline(AbstractPipeline):
             name = "good_cron_test_pipeline_dx"
-            schedule = "*/5 * * * *"
+            schedules = [ScheduledRun(name="default", cron="*/5 * * * *")]
 
             def define_source(self, runtime_params):
                 return MockSource(data=[])
@@ -219,14 +219,15 @@ class TestCronValidation:
     @pytest.mark.dx
     def test_six_field_cron_raises(self):
         """6-field cron (common mistake from AWS/Quartz) raises ValueError."""
-        from reflowfy.core.abstract_pipeline import AbstractPipeline
+        from reflowfy.core.abstract_pipeline import AbstractPipeline, ScheduledRun
         from reflowfy.sources.mock import MockSource
         from reflowfy.destinations.console import ConsoleDestination
 
         with pytest.raises(ValueError, match="invalid cron"):
             class SixFieldCronPipeline(AbstractPipeline):
                 name = "six_field_cron_pipeline_dx"
-                schedule = "0 */5 * * * ?"  # 6 fields — Quartz style, not valid in croniter
+                # 6 fields — Quartz style, not valid in croniter
+                schedules = [ScheduledRun(name="default", cron="0 */5 * * * ?")]
 
                 def define_source(self, runtime_params):
                     return MockSource(data=[])

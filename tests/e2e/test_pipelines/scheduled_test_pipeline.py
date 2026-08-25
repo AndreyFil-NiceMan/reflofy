@@ -18,7 +18,14 @@ needed the HTTP sink.
 
 import uuid
 
-from reflowfy import AbstractPipeline, BaseDestination, Records, RuntimeParams, Transformations
+from reflowfy import (
+    AbstractPipeline,
+    BaseDestination,
+    Records,
+    RuntimeParams,
+    ScheduledRun,
+    Transformations,
+)
 from tests.e2e.test_pipelines.sources import e2e_mock
 from tests.e2e.test_pipelines.destinations import e2e_console
 
@@ -35,7 +42,7 @@ class E2EScheduledTestPipeline(AbstractPipeline[RuntimeParams]):
     """E2E scheduled pipeline — fires every minute."""
 
     name = "e2e_scheduled_test"
-    schedule = "* * * * *"
+    schedules = [ScheduledRun(name="default", cron="* * * * *")]
 
     def define_source(self, runtime_params):
         return e2e_mock(count=5, batch_size=5)
@@ -55,7 +62,7 @@ class E2EScheduledSlowPipeline(AbstractPipeline[RuntimeParams]):
     """E2E scheduled pipeline with a less frequent schedule."""
 
     name = "e2e_scheduled_slow_test"
-    schedule = "0 * * * *"
+    schedules = [ScheduledRun(name="default", cron="0 * * * *")]
 
     def define_source(self, runtime_params):
         return e2e_mock(count=5, batch_size=5)
@@ -75,11 +82,40 @@ class E2EScheduledNoDuplicatesPipeline(AbstractPipeline[RuntimeParams]):
     """E2E scheduled pipeline with duplicate jobs disabled."""
 
     name = "e2e_scheduled_no_duplicates_test"
-    schedule = "0 0 1 1 *"  # once a year — never auto-fires during tests
+    # once a year — never auto-fires during tests
+    schedules = [ScheduledRun(name="default", cron="0 0 1 1 *")]
     enable_duplicate_jobs = False
 
     def define_source(self, runtime_params):
         return e2e_mock(data=_NO_DUP_FIXED_DATA, batch_size=5)
+
+    def define_destination(
+        self, records: Records, runtime_params: RuntimeParams
+    ) -> BaseDestination:
+        return e2e_console()
+
+    def define_transformations(
+        self, records: Records, runtime_params: RuntimeParams
+    ) -> Transformations:
+        return []
+
+
+class E2EMultiSchedulePipeline(AbstractPipeline[RuntimeParams]):
+    """E2E pipeline with two named schedules, each with its own params.
+
+    Exercises the multi-schedule feature end to end: both fire independently
+    (on their own cron + params), never auto-firing during a normal test run
+    (both crons are "once a year", on different days).
+    """
+
+    name = "e2e_multi_schedule_test"
+    schedules = [
+        ScheduledRun(name="morning", cron="0 9 1 1 *", params={"mode": "fast"}),
+        ScheduledRun(name="evening", cron="0 17 2 1 *", params={"mode": "full"}),
+    ]
+
+    def define_source(self, runtime_params):
+        return e2e_mock(count=5, batch_size=5)
 
     def define_destination(
         self, records: Records, runtime_params: RuntimeParams
