@@ -42,6 +42,8 @@ class KafkaDestination(BaseDestination):
         consumer_group_id: Optional[str] = None,
         lag_threshold: int = 10000,
         lag_check_timeout: float = 10.0,
+        # Message key
+        key_field: Optional[str] = None,
         **producer_config: Any,
     ):
         """
@@ -60,6 +62,10 @@ class KafkaDestination(BaseDestination):
             consumer_group_id: Consumer group to monitor for lag
             lag_threshold: Max allowed consumer lag (records) before health check fails
             lag_check_timeout: Timeout in seconds for the lag check
+            key_field: Name of a field on each record to use as the Kafka message
+                key (for partitioning). The field stays in the JSON value too —
+                this only extracts it, it does not remove it. Records missing the
+                field, or non-dict records, are sent with no key.
             **producer_config: Additional producer configuration
         """
         config = {
@@ -74,6 +80,7 @@ class KafkaDestination(BaseDestination):
             "consumer_group_id": consumer_group_id,
             "lag_threshold": lag_threshold,
             "lag_check_timeout": lag_check_timeout,
+            "key_field": key_field,
             **producer_config,
         }
 
@@ -196,11 +203,17 @@ class KafkaDestination(BaseDestination):
         """
         producer = await self._get_producer()
         topic = self.config["topic"]
+        key_field = self.config.get("key_field")
 
         try:
             for record in records:
                 # Serialize record to JSON
                 value = json.dumps(record).encode("utf-8")
+
+                # Extract partition key, if configured
+                key: Optional[bytes] = None
+                if key_field and isinstance(record, dict) and key_field in record:
+                    key = str(record[key_field]).encode("utf-8")
 
                 # Prepare headers
                 headers: List[Tuple[str, bytes]] = []
@@ -213,6 +226,7 @@ class KafkaDestination(BaseDestination):
                 await producer.send_and_wait(
                     topic=topic,
                     value=value,
+                    key=key,
                     headers=headers if headers else None,
                 )
 
@@ -287,6 +301,7 @@ def kafka_destination(
     consumer_group_id: Optional[str] = None,
     lag_threshold: int = 10000,
     lag_check_timeout: float = 10.0,
+    key_field: Optional[str] = None,
     **producer_config: Any,
 ) -> KafkaDestination:
     """
@@ -299,6 +314,7 @@ def kafka_destination(
         ...     lag_health_check_enabled=True,
         ...     consumer_group_id="downstream-consumers",
         ...     lag_threshold=5000,
+        ...     key_field="user_id",
         ... )
     """
     return KafkaDestination(
@@ -314,5 +330,6 @@ def kafka_destination(
         consumer_group_id=consumer_group_id,
         lag_threshold=lag_threshold,
         lag_check_timeout=lag_check_timeout,
+        key_field=key_field,
         **producer_config,
     )
