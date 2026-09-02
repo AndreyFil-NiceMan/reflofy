@@ -62,10 +62,10 @@ class KafkaDestination(BaseDestination):
             consumer_group_id: Consumer group to monitor for lag
             lag_threshold: Max allowed consumer lag (records) before health check fails
             lag_check_timeout: Timeout in seconds for the lag check
-            key_field: Name of a field on each record to use as the Kafka message
-                key (for partitioning). The field stays in the JSON value too —
-                this only extracts it, it does not remove it. Records missing the
-                field, or non-dict records, are sent with no key.
+            key_field: Name of a field on each record. When set and present on a
+                record, only that field's value is sent as the Kafka message
+                (instead of the whole record). Records missing the field, or
+                non-dict records, are sent unchanged.
             **producer_config: Additional producer configuration
         """
         config = {
@@ -207,13 +207,12 @@ class KafkaDestination(BaseDestination):
 
         try:
             for record in records:
-                # Serialize record to JSON
-                value = json.dumps(record).encode("utf-8")
-
-                # Extract partition key, if configured
-                key: Optional[bytes] = None
+                # If key_field is set and present, send just that field's value
+                # instead of the whole record.
+                payload = record
                 if key_field and isinstance(record, dict) and key_field in record:
-                    key = str(record[key_field]).encode("utf-8")
+                    payload = record[key_field]
+                value = json.dumps(payload).encode("utf-8")
 
                 # Prepare headers
                 headers: List[Tuple[str, bytes]] = []
@@ -226,7 +225,6 @@ class KafkaDestination(BaseDestination):
                 await producer.send_and_wait(
                     topic=topic,
                     value=value,
-                    key=key,
                     headers=headers if headers else None,
                 )
 
