@@ -41,8 +41,26 @@ from reflowfy import (
     AbstractPipeline,
     BaseTransformation,
     elastic_source,
+    transformation,
 )
 from reflowfy.destinations.console import console_destination
+
+# ============================================================================
+# Params (declared first: the transformation functions below annotate
+# runtime_params with this type, so it must exist before they're defined)
+# ============================================================================
+
+
+class ElasticTestParams(RuntimeParams, total=False):
+    """Parameters for :class:`ElasticTestPipeline`."""
+
+    start_time: Annotated[Required[str], Param("Start of time range (ISO format)")]
+    end_time: Annotated[Required[str], Param("End of time range (ISO format)")]
+    filter_status: Annotated[
+        NotRequired[Literal["active", "inactive", "pending"]],
+        Param("Status to filter by", default="active"),
+    ]
+
 
 # ============================================================================
 # Transformations
@@ -50,7 +68,12 @@ from reflowfy.destinations.console import console_destination
 
 
 class FilterByStatus(BaseTransformation):
-    """Filter records by status field."""
+    """Filter records by status field.
+
+    A class, not a @transformation function, because it needs constructor
+    state (``allowed_status``) — see EnrichWithProcessingInfo/FormatEventData
+    below for the preferred style when no state is needed.
+    """
 
     name = "filter_by_status"
 
@@ -68,62 +91,49 @@ class FilterByStatus(BaseTransformation):
         return filtered
 
 
-class EnrichWithProcessingInfo(BaseTransformation):
-    """Add processing metadata to records."""
+@transformation("enrich_processing_info")
+def enrich_processing_info(records: Records, runtime_params: ElasticTestParams) -> Records:
+    """Add processing metadata.
 
-    name = "enrich_processing_info"
+    Declared with @transformation (not a BaseTransformation subclass) so
+    `runtime_params: ElasticTestParams` is actually checked — a subclass
+    can't narrow BaseTransformation.apply's `Dict[str, Any]` to a specific
+    TypedDict without mypy/pyright rejecting the override.
+    """
+    execution_id = runtime_params.get("execution_id", "unknown")
+    pipeline_name = runtime_params.get("pipeline_name", "unknown")
 
-    def apply(self, records, runtime_params):
-        """Add processing metadata."""
-        execution_id = runtime_params.get("execution_id", "unknown")
-        pipeline_name = runtime_params.get("pipeline_name", "unknown")
+    for record in records:
+        record["_reflofy_processed"] = {
+            "execution_id": execution_id,
+            "pipeline_name": pipeline_name,
+            "processed_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
+            "framework": "reflofy",
+        }
 
-        for record in records:
-            record["_reflofy_processed"] = {
-                "execution_id": execution_id,
-                "pipeline_name": pipeline_name,
-                "processed_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
-                "framework": "reflofy",
-            }
-
-        return records
+    return records
 
 
-class FormatEventData(BaseTransformation):
-    """Format event data for better readability."""
+@transformation("format_event_data")
+def format_event_data(records: Records, runtime_params: ElasticTestParams) -> Records:
+    """Format event data fields."""
+    for record in records:
+        event_type = record["data"].get("event_type", "unknown")
+        user_name = record["data"].get("user_name", "unknown")
+        timestamp = record["data"].get("@timestamp", "unknown")
 
-    name = "format_event_data"
+        record["_summary"] = f"{event_type} by {user_name} at {timestamp}"
 
-    def apply(self, records, runtime_params):
-        """Format event data fields."""
-        for record in records:
-            event_type = record["data"].get("event_type", "unknown")
-            user_name = record["data"].get("user_name", "unknown")
-            timestamp = record["data"].get("@timestamp", "unknown")
+        event_data = record["data"].get("event_data", {})
+        if event_type == "purchase" and "amount" in event_data:
+            event_data["formatted_amount"] = f"${event_data['amount']:.2f}"
 
-            record["_summary"] = f"{event_type} by {user_name} at {timestamp}"
-
-            event_data = record["data"].get("event_data", {})
-            if event_type == "purchase" and "amount" in event_data:
-                event_data["formatted_amount"] = f"${event_data['amount']:.2f}"
-
-        return records
+    return records
 
 
 # ============================================================================
 # Pipeline Definition
 # ============================================================================
-
-
-class ElasticTestParams(RuntimeParams, total=False):
-    """Parameters for :class:`ElasticTestPipeline`."""
-
-    start_time: Annotated[Required[str], Param("Start of time range (ISO format)")]
-    end_time: Annotated[Required[str], Param("End of time range (ISO format)")]
-    filter_status: Annotated[
-        NotRequired[Literal["active", "inactive", "pending"]],
-        Param("Status to filter by", default="active"),
-    ]
 
 
 class ElasticTestPipeline(AbstractPipeline[ElasticTestParams]):
@@ -184,6 +194,6 @@ class ElasticTestPipeline(AbstractPipeline[ElasticTestParams]):
 
         return [
             FilterByStatus(allowed_status=filter_status),
-            EnrichWithProcessingInfo(),
-            FormatEventData(),
+            enrich_processing_info(),
+            format_event_data(),
         ]
