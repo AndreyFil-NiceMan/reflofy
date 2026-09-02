@@ -36,7 +36,6 @@ from typing import (
     TYPE_CHECKING,
     Annotated,
     Any,
-    ClassVar,
     Dict,
     Generic,
     Iterable,
@@ -498,7 +497,10 @@ class AbstractPipeline(QueryLoaderMixin, Generic[P], metaclass=PipelineMeta):
     # Named cron schedules for automatic execution, each with its own params
     # (e.g. [ScheduledRun(name="morning", cron="0 9 * * *", params={"mode": "fast"})]).
     # Empty means the pipeline is never auto-scheduled.
-    schedules: ClassVar[List[ScheduledRun]] = []
+    # Not ClassVar: like rate_limit/config, a subclass may set this on self in
+    # __init__ instead of the class namespace (see the belt-and-suspenders
+    # _validate_schedules call below) — ClassVar would make that a type error.
+    schedules: List[ScheduledRun] = []
 
     def __init__(
         self,

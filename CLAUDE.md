@@ -140,6 +140,30 @@ They are aliases, not a second generic parameter. The framework's own signatures
 
 `@transformation` is typed `Callable[[TransformFn], type[BaseTransformation]]` with `TransformFn = Callable[[Any, Any], Any]`. `Any` in every position on purpose: it rejects a wrong-arity function (the mistake that used to reach production as a runtime `TypeError`) without rejecting an author who annotates `runtime_params` with their own params TypedDict — a closed TypedDict is not assignable from `Dict[str, Any]`.
 
+**Prefer `@transformation` over subclassing `BaseTransformation` whenever a
+pipeline's own params type should be checked inside the transformation.**
+`BaseTransformation.apply(self, records, runtime_params: Dict[str, Any])` can't
+be narrowed on a subclass to a specific params TypedDict — mypy/pyright reject
+that override as an LSP violation (a parameter type may only widen, never
+narrow). A `@transformation`-decorated function has no such override relationship,
+so it can be annotated with the pipeline's real params type and get full
+checking — mypy validates a function's body against its own annotations
+regardless of what the decorator turns the name into afterward:
+
+```python
+class ElasticTestParams(RuntimeParams, total=False):
+    filter_status: Annotated[NotRequired[Literal["active", "inactive"]], Param(default="active")]
+
+@transformation("enrich_processing_info")
+def enrich_processing_info(records: Records, runtime_params: ElasticTestParams) -> Records:
+    runtime_params["filter_staus"]  # mypy: TypedDict has no key "filter_staus" — caught
+    ...
+```
+
+Reach for a `BaseTransformation` subclass only when the transformation needs
+its own constructor state (e.g. `FilterByStatus(allowed_status="active")`) —
+a plain function can't carry that.
+
 The package ships `reflowfy/py.typed` (PEP 561), so installs are type-checked by consumers. It is registered in both `[tool.setuptools.package-data]` and `MANIFEST.in`.
 
 Where a third-party library genuinely has no types, the suppression is **file-scoped, never repo-wide**, with a header comment naming the library: `destinations/kafka.py`, `worker/consumer.py` and `reflow_manager/dispatcher.py` (aiokafka ships no stubs), and `sources/s3.py` (`reportTypedDictNotRequiredAccess`, because boto3-stubs marks `Key`/`Size`/`ETag` NotRequired). That rule stays live everywhere else on purpose — it is what catches `runtime_params["execution_id"]` subscripting on the all-optional `RuntimeParams`. `boto3.client("s3", ...)` passes every argument explicitly: boto3 is typed by overloads on the literal service name, and a `**kwargs` splat matches none of them, making the client and everything derived from it Unknown.
